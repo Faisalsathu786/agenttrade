@@ -3,118 +3,59 @@ pragma solidity ^0.8.28;
 
 /**
  * @title AgentTrader
- * @notice Autonomous Trading Agent on Ritual Chain
- * @dev Uses Ritual precompiles for on-chain price data and LLM analysis
+ * @notice Autonomous Trading Agent — fetches prices via Ritual HTTP precompile (0x0801),
+ *         stores price data for on-chain verification.
+ *
+ * Future: LLM precompile (0x0802) for BUY/SELL/HOLD analysis.
  *
  * Precompile addresses (Ritual Chain 1979):
- *   HTTP: 0x0801 — fetches real-world data (CoinGecko prices, news)
- *   LLM:  0x0802 — on-chain AI inference for market analysis
- *   Agent: 0x0820 — persistent autonomous agent lifecycle
+ *   HTTP: 0x0801
+ *   LLM:  0x0802
  */
+contract AgentTrader {
 
-// ─── Precompile Interfaces ───────────────────────────────────────────
-
-interface IHTTPPrecompile {
-    struct HTTPRequest {
-        string url;
-        string method;          // GET, POST
-        string[] headers;       // key:value pairs
-        string body;            // request payload
-        bool followRedirects;
-        uint32 maxBodySize;
-        uint64 maxOutputBodySize;
-        uint32 cacheTTL;
-        uint8 capability;       // 0 = HTTP
-        address payment;        // msg.sender
-        uint32 priorityFee;
-        uint32 gasLimit;
-        bytes extraData;
-    }
-
-    function run(HTTPRequest calldata req) external returns (bytes32 requestId);
-}
-
-interface ILLMPrecompile {
-    struct LLMRequest {
-        string model;
-        string[] messages;       // JSON-formatted message array
-        uint32 maxTokens;
-        bool stream;
-        uint8 capability;        // 1 = LLM
-        address payment;
-        uint32 priorityFee;
-        uint32 gasLimit;
-        uint64 temperature;
-        uint64 topP;
-        string systemPrompt;
-        bytes extraData;
-    }
-
-    function run(LLMRequest calldata req) external returns (bytes32 requestId);
-}
-
-/// @notice Callback interface for async precompile results
-interface IAsyncCallback {
-    function onHTTPResponse(bytes32 requestId, bytes calldata response) external;
-    function onLLMResponse(bytes32 requestId, bytes calldata response) external;
-}
-
-// ─── AgentTrader Contract ────────────────────────────────────────────
-
-contract AgentTrader is IAsyncCallback {
-    // ─── Constants ───────────────────────────────────────────────────
-
-    address public constant HTTP_PRECOMPILE = 0x0000000000000000000000000000000000000801;
-    address public constant LLM_PRECOMPILE  = 0x0000000000000000000000000000000000000802;
+    address private constant HTTP_PRE = 0x0000000000000000000000000000000000000801;
+    address private constant EXECUTOR = 0x7cEc336E46D8791fF9d9c5f7A5b8a6001ffD96d1;
 
     string public constant AGENT_NAME    = "AgentTrade V1";
     string public constant AGENT_VERSION = "1.0.0";
-
-    // ─── State ───────────────────────────────────────────────────────
 
     enum Decision { NONE, BUY, SELL, HOLD }
     enum Asset    { NONE, BTC, ETH, SOL }
 
     struct AgentState {
         uint32  totalDecisions;
-        int256  paperPnL;            // simulated PnL in basis points
+        int256  paperPnL;
         uint256 lastActivityBlock;
         bool    active;
+    }
+
+    struct PriceRecord {
+        Asset     asset;
+        uint256   price;
+        uint256   timestamp;
+        bytes32   httpRequestId;
     }
 
     struct DecisionRecord {
         uint256   id;
         Asset     asset;
         Decision  decision;
-        uint256   priceAtDecision;   // price with 8 decimals
+        uint256   priceAtDecision;
         uint256   timestamp;
-        string    reasoning;         // LLM output
-        bytes32   llmRequestId;
-        bytes32   httpRequestId;
+        string    reasoning;
     }
 
     AgentState public agent;
+    PriceRecord[] public priceHistory;
     DecisionRecord[] public decisions;
 
     mapping(bytes32 => bool) public pendingHTTP;
-    mapping(bytes32 => bool) public pendingLLM;
-    mapping(bytes32 => DecisionRequest) public requestMap;
-
-    struct DecisionRequest {
-        Asset    asset;
-        uint256  price;
-        bool     stage;             // false=waiting price, true=waiting LLM
-    }
-
-    // ─── Events ──────────────────────────────────────────────────────
+    mapping(bytes32 => Asset) public pendingAsset;
 
     event PriceFetched(Asset indexed asset, uint256 price, uint256 timestamp);
-    event AnalysisRequested(Asset indexed asset, uint256 price, bytes32 llmRequestId);
     event DecisionMade(uint256 indexed id, Asset asset, Decision decision, uint256 price, string reasoning);
     event AgentInitialized(address indexed owner, string name);
-    event ErrorOccurred(string reason);
-
-    // ─── Constructor ─────────────────────────────────────────────────
 
     constructor() {
         agent.active = true;
@@ -122,317 +63,120 @@ contract AgentTrader is IAsyncCallback {
         emit AgentInitialized(msg.sender, AGENT_NAME);
     }
 
-    // ─── Public: Trigger Price Check ─────────────────────────────────
+    receive() external payable {}
+    function deposit() external payable {}
 
     /**
-     * @notice Fetch live price for an asset via Ritual HTTP precompile
-     * @param _asset 0=BTC, 1=ETH, 2=SOL
+     * @notice Fetch live BTC/ETH/SOL price via Ritual HTTP precompile (0x0801)
+     * @param _asset 1=BTC, 2=ETH, 3=SOL
+     *
+     * HTTP precompile ABI — 13 flat-encoded fields:
+     *   (address,bytes[],uint256,bytes[],bytes, string,uint8,string[],string[],bytes, uint256,uint8,bool)
+     * Returns: abi.encode(bytes simmedInput, bytes actualOutput)
+     * actualOutput: (uint16,string[],string[],bytes,string)
      */
     function fetchPrice(Asset _asset) external returns (bytes32) {
         require(agent.active, "Agent inactive");
-        require(_asset != Asset.NONE, "Invalid asset");
+        require(_asset >= Asset.BTC && _asset <= Asset.SOL, "Invalid asset");
 
-        string memory url = getAssetURL(_asset);
+        (bool ok, bytes memory data) = address(HTTP_PRE).call(
+            abi.encode(
+                EXECUTOR, new bytes[](0), uint256(100), new bytes[](0), bytes(""),
+                getAssetURL(_asset), uint8(1), new string[](0), new string[](0), bytes(""),
+                uint256(0), uint8(0), false
+            )
+        );
+        require(ok, "HTTP call failed");
 
-        string[] memory headers = new string[](1);
-        headers[0] = "Accept: application/json";
+        (bytes memory simmed,) = abi.decode(data, (bytes, bytes));
+        bytes32 rid = keccak256(simmed);
 
-        IHTTPPrecompile.HTTPRequest memory req = IHTTPPrecompile.HTTPRequest({
-            url:              url,
-            method:           "GET",
-            headers:          headers,
-            body:             "",
-            followRedirects:  true,
-            maxBodySize:      5000,
-            maxOutputBodySize: 1000,
-            cacheTTL:         60,
-            capability:       0,
-            payment:          address(this),
-            priorityFee:      0,
-            gasLimit:         300000,
-            extraData:        ""
-        });
-
-        bytes32 requestId = IHTTPPrecompile(HTTP_PRECOMPILE).run(req);
-        pendingHTTP[requestId] = true;
-        requestMap[requestId] = DecisionRequest({
-            asset: _asset,
-            price: 0,
-            stage: false
-        });
-
-        return requestId;
+        pendingHTTP[rid] = true;
+        pendingAsset[rid] = _asset;
+        return rid;
     }
 
-    // ─── Callback: HTTP Response ─────────────────────────────────────
-
-    function onHTTPResponse(bytes32 requestId, bytes calldata response) external override {
+    /**
+     * @notice Callback invoked by Ritual chain when HTTP precompile completes
+     * @param requestId Request identifier
+     * @param response Encoded output: (uint16,string[],string[],bytes,string)
+     */
+    function onHTTPResponse(bytes32 requestId, bytes calldata response) external {
         require(pendingHTTP[requestId], "Unknown HTTP request");
         delete pendingHTTP[requestId];
 
-        DecisionRequest storage req = requestMap[requestId];
+        (, , , bytes memory body,) = abi.decode(response, (uint16, string[], string[], bytes, string));
 
-        // Parse price from CoinGecko JSON response
-        int256 price = parsePrice(response);
-        if (price <= 0) {
-            emit ErrorOccurred("Price parse failed");
-            return;
-        }
+        uint256 price = parsePrice(body);
+        require(price > 0, "Price parse failed");
 
-        // forge-lint: disable-next-line(unsafe-typecast)
-        req.price = uint256(price);
-        req.stage = true;
-
-        emit PriceFetched(req.asset, req.price, block.timestamp);
-
-        // Now request LLM analysis
-        requestLLMAnalysis(req.asset, req.price, requestId);
-    }
-
-    // ─── Callback: LLM Response ──────────────────────────────────────
-
-    function onLLMResponse(bytes32 requestId, bytes calldata response) external override {
-        require(pendingLLM[requestId], "Unknown LLM request");
-        delete pendingLLM[requestId];
-
-        DecisionRequest storage req = requestMap[requestId];
-        require(req.stage, "Invalid state");
-
-        (Decision dec, string memory reasoning) = parseLLMOutput(response);
-
-        uint256 id = decisions.length;
-        decisions.push(DecisionRecord({
-            id:              id,
-            asset:           req.asset,
-            decision:        dec,
-            priceAtDecision: req.price,
-            timestamp:       block.timestamp,
-            reasoning:       reasoning,
-            llmRequestId:    requestId,
-            httpRequestId:   bytes32(0)
-        }));
-
-        agent.totalDecisions++;
+        Asset asset = pendingAsset[requestId];
+        priceHistory.push(PriceRecord(asset, price, block.timestamp, requestId));
         agent.lastActivityBlock = block.number;
 
-        emit DecisionMade(id, req.asset, dec, req.price, reasoning);
+        emit PriceFetched(asset, price, block.timestamp);
     }
 
-    // ─── Internal: LLM Request ───────────────────────────────────────
-
-    function requestLLMAnalysis(Asset _asset, uint256 _price, bytes32 _httpReqId) internal {
-        string[] memory messages = new string[](1);
-        messages[0] = buildPrompt(_asset, _price);
-
-        ILLMPrecompile.LLMRequest memory req = ILLMPrecompile.LLMRequest({
-            model:        "llama-3.1-8b-instruct",
-            messages:     messages,
-            maxTokens:    256,
-            stream:       false,
-            capability:   1,
-            payment:      address(this),
-            priorityFee:  0,
-            gasLimit:     500000,
-            temperature:  0.3e18,
-            topP:         0.95e18,
-            systemPrompt: "You are a professional trading analyst. Analyze the given price and respond with exactly one word: BUY, SELL, or HOLD. Then provide a brief technical reason in the next sentence.",
-            extraData:    ""
-        });
-
-        bytes32 requestId = ILLMPrecompile(LLM_PRECOMPILE).run(req);
-        pendingLLM[requestId] = true;
-
-        DecisionRequest storage dr = requestMap[_httpReqId];
-        dr.price = _price;
-        dr.stage = true;
-
-        emit AnalysisRequested(_asset, _price, requestId);
+    // ── Parsers ───────────────────────────────────────────────────
+    function parsePrice(bytes memory b) internal pure returns (uint256) {
+        // Expected JSON: {"bitcoin":{"usd":67234.56}} etc.
+        bytes memory key = bytes("usd");
+        uint256 idx = indexOf(b, key);
+        if (idx == type(uint256).max) return 0;
+        uint256 s = idx + 6;
+        while (s < b.length && b[s] == 0x20) s++;
+        uint256 e = s;
+        while (e < b.length && ((b[e] >= 0x30 && b[e] <= 0x39) || b[e] == 0x2E)) e++;
+        if (e == s) return 0;
+        bytes memory num = new bytes(e - s);
+        for (uint256 i = s; i < e; i++) num[i - s] = b[i];
+        return uint256(parseInt(num, 8));
     }
 
-    // ─── Internal Parsers ────────────────────────────────────────────
-
-    function parsePrice(bytes memory response) internal pure returns (int256) {
-        // Parse JSON response from CoinGecko:
-        // {"bitcoin":{"usd":67234.56}} or {"ethereum":{"usd":3241.89}} etc
-        // Simplified parser for known format
-        // Find the "usd" value in the response
-        bytes memory searchFor = bytes("usd");
-        uint256 idx = indexOf(response, searchFor);
-        if (idx == type(uint256).max) return -1;
-
-        // Navigate to number after "usd":
-        uint256 numStart = idx + 6; // skip "usd":
-        uint256 numEnd = numStart;
-
-        while (numEnd < response.length) {
-            bytes1 c = response[numEnd];
-            if ((c >= 0x30 && c <= 0x39) || c == 0x2E) {
-                numEnd++;
-            } else {
-                break;
-            }
-        }
-
-        if (numEnd == numStart) return -1;
-
-        bytes memory numBytes = new bytes(numEnd - numStart);
-        for (uint256 i = numStart; i < numEnd; i++) {
-            numBytes[i - numStart] = response[i];
-        }
-
-        return parseIntBytes(numBytes, 8); // return with 8 decimals
+    // ── Helpers ───────────────────────────────────────────────────
+    function getAssetURL(Asset a) internal pure returns (string memory) {
+        if (a == Asset.BTC) return "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
+        if (a == Asset.ETH) return "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
+        if (a == Asset.SOL) return "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd";
+        return "";
     }
 
-    function parseLLMOutput(bytes memory response) internal pure returns (Decision, string memory) {
-        // Parse LLM response for BUY/SELL/HOLD decision
-        string memory resp = string(response);
-
-        if (containsWord(resp, "BUY")) {
-            return (Decision.BUY, resp);
-        } else if (containsWord(resp, "SELL")) {
-            return (Decision.SELL, resp);
-        } else {
-            return (Decision.HOLD, resp);
-        }
+    // ── Views ─────────────────────────────────────────────────────
+    function getAgentState() external view returns (AgentState memory) { return agent; }
+    function getPriceCount() external view returns (uint256) { return priceHistory.length; }
+    function getDecisionCount() external view returns (uint256) { return decisions.length; }
+    function getLatestPrice() external view returns (PriceRecord memory) {
+        require(priceHistory.length > 0, "No prices yet");
+        return priceHistory[priceHistory.length - 1];
     }
+    function getContractBalance() external view returns (uint256) { return address(this).balance; }
 
-    // ─── Helpers ─────────────────────────────────────────────────────
-
-    function getAssetURL(Asset _asset) internal pure returns (string memory) {
-        if (_asset == Asset.BTC) {
-            return "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
-        } else if (_asset == Asset.ETH) {
-            return "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
-        } else {
-            return "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd";
-        }
-    }
-
-    function getPriceKey(Asset _asset) internal pure returns (bytes memory) {
-        if (_asset == Asset.BTC)  return bytes("bitcoin");
-        if (_asset == Asset.ETH)  return bytes("ethereum");
-        return bytes("solana");
-    }
-
-    function buildPrompt(Asset _asset, uint256 _price) internal pure returns (string memory) {
-        string memory assetName = getAssetName(_asset);
-        uint256 usdPrice = _price / 1e8;
-        return string(abi.encodePacked(
-            "Current ", assetName, " price: $", uint2str(usdPrice),
-            ". Based on this price level, should an autonomous trading agent BUY, SELL, or HOLD? Respond with one word first, then a brief reason."
-        ));
-    }
-
-    function getAssetName(Asset _asset) internal pure returns (string memory) {
-        if (_asset == Asset.BTC) return "BTC";
-        if (_asset == Asset.ETH) return "ETH";
-        return "SOL";
-    }
-
-    // ─── View Functions ──────────────────────────────────────────────
-
-    function getDecisionCount() external view returns (uint256) {
-        return decisions.length;
-    }
-
-    function getLatestDecision() external view returns (DecisionRecord memory) {
-        require(decisions.length > 0, "No decisions yet");
-        return decisions[decisions.length - 1];
-    }
-
-    function getDecision(uint256 _id) external view returns (DecisionRecord memory) {
-        require(_id < decisions.length, "Invalid ID");
-        return decisions[_id];
-    }
-
-    function getAgentState() external view returns (AgentState memory) {
-        return agent;
-    }
-
-    // ─── String/Byte Utilities ───────────────────────────────────────
-
-    function indexOf(bytes memory haystack, bytes memory needle) internal pure returns (uint256) {
-        if (needle.length == 0) return 0;
-        if (haystack.length < needle.length) return type(uint256).max;
-
-        for (uint256 i = 0; i <= haystack.length - needle.length; i++) {
-            bool found = true;
-            for (uint256 j = 0; j < needle.length; j++) {
-                if (haystack[i + j] != needle[j]) {
-                    found = false;
-                    break;
-                }
-            }
-            if (found) return i;
+    // ── Utilities ─────────────────────────────────────────────────
+    function indexOf(bytes memory h, bytes memory n) internal pure returns (uint256) {
+        if (n.length == 0) return 0;
+        if (h.length < n.length) return type(uint256).max;
+        for (uint256 i = 0; i <= h.length - n.length; i++) {
+            bool f = true;
+            for (uint256 j = 0; j < n.length; j++) if (h[i+j] != n[j]) { f = false; break; }
+            if (f) return i;
         }
         return type(uint256).max;
     }
 
-    function parseIntBytes(bytes memory b, uint8 decimals) internal pure returns (int256) {
-        int256 result = 0;
-        int256 fraction = 0;
-        uint8 fracDigits = 0;
-        bool inFraction = false;
-        bool negative = false;
+    function parseInt(bytes memory b, uint8 decimals) internal pure returns (int256) {
+        int256 r = 0; int256 f = 0; uint8 fd = 0; bool neg = false; bool frac = false;
         uint256 i = 0;
-
-        if (b.length > 0 && b[0] == 0x2D) { // '-'
-            negative = true;
-            i = 1;
-        }
-
+        if (b.length > 0 && b[0] == 0x2D) { neg = true; i = 1; }
         for (; i < b.length; i++) {
             bytes1 c = b[i];
-            if (c == 0x2E) { // '.'
-                inFraction = true;
-                continue;
-            }
-            if (c >= 0x30 && c <= 0x39) {
-                uint8 digit = uint8(c) - 48;
-                if (inFraction) {
-                    fraction = fraction * 10 + int256(uint256(digit));
-                    fracDigits++;
-                    if (fracDigits >= decimals) break;
-                } else {
-                    result = result * 10 + int256(uint256(digit));
-                }
-            }
+            if (c == 0x2E) { frac = true; continue; }
+            if (c < 0x30 || c > 0x39) break;
+            uint8 d = uint8(c) - 48;
+            if (frac) { f = f * 10 + int256(uint256(d)); fd++; if (fd >= decimals) break; }
+            else r = r * 10 + int256(uint256(d));
         }
-
-        // Scale
-        result = result * int256(10**decimals);
-        for (uint8 d = fracDigits; d < decimals; d++) {
-            fraction = fraction * 10;
-        }
-        result += fraction;
-
-        return negative ? -result : result;
-    }
-
-    function uint2str(uint256 _i) internal pure returns (string memory) {
-        if (_i == 0) return "0";
-        uint256 j = _i;
-        uint256 len;
-        while (j != 0) { len++; j /= 10; }
-        bytes memory bstr = new bytes(len);
-        uint256 k = len;
-        j = _i;
-        while (j != 0) { bstr[--k] = bytes1(uint8(48 + (j % 10))); j /= 10; }
-        return string(bstr);
-    }
-
-    function containsWord(string memory text, string memory word) internal pure returns (bool) {
-        bytes memory t = bytes(text);
-        bytes memory w = bytes(word);
-        if (t.length < w.length) return false;
-
-        for (uint256 i = 0; i <= t.length - w.length; i++) {
-            bool match_ = true;
-            for (uint256 j = 0; j < w.length; j++) {
-                if (t[i + j] != w[j]) { match_ = false; break; }
-            }
-            if (match_) return true;
-        }
-        return false;
+        r = r * int256(10 ** decimals);
+        for (uint8 d = fd; d < decimals; d++) f = f * 10;
+        return neg ? -(r + f) : (r + f);
     }
 }
