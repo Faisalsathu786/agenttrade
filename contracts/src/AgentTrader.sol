@@ -15,6 +15,7 @@ pragma solidity ^0.8.28;
 contract AgentTrader {
 
     address private constant HTTP_PRE = 0x0000000000000000000000000000000000000801;
+    address private constant RWALLET = 0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948;
     address private constant EXECUTOR = 0x7cEc336E46D8791fF9d9c5f7A5b8a6001ffD96d1;
 
     string public constant AGENT_NAME    = "AgentTrade V1";
@@ -65,6 +66,12 @@ contract AgentTrader {
 
     receive() external payable {}
     function deposit() external payable {}
+
+    /// @notice Fund the RitualWallet for precompile fee payments
+    function fundWallet(uint256 lockDuration) external {
+        (bool ok,) = payable(RWALLET).call{value: address(this).balance}(abi.encodeWithSignature("deposit(uint256)", lockDuration));
+        require(ok, "Wallet fund failed");
+    }
 
     /**
      * @notice Fetch live BTC/ETH/SOL price via Ritual HTTP precompile (0x0801)
