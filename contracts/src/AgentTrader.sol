@@ -6,8 +6,8 @@ pragma solidity ^0.8.28;
  * @notice Autonomous Trading Agent on Ritual Chain
  *
  * Uses HTTP precompile (0x0801) for on-chain price data via TEE.
- * The call is split-phase: first execution creates a commitment,
- * replayed execution (when HTTP response is ready) stores the result.
+ * Rule-based decision engine: compares trend, gives direction + confidence.
+ * LLM precompile (0x0802) integration deferred to next milestone.
  *
  * Precompile addresses (Ritual Chain 1979):
  *   HTTP: 0x0801
@@ -15,13 +15,14 @@ pragma solidity ^0.8.28;
 contract AgentTrader {
 
     address private constant HTTP_PRE = 0x0000000000000000000000000000000000000801;
-    address private constant RWALLET = 0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948;
+    address private constant RWALLET  = 0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948;
     address private constant EXECUTOR = 0x7cEc336E46D8791fF9d9c5f7A5b8a6001ffD96d1;
 
     string public constant AGENT_NAME    = "AgentTrade V1";
     string public constant AGENT_VERSION = "1.0.0";
 
     enum Asset { NONE, BTC, ETH, SOL }
+    enum Direction { HOLD, BULLISH, BEARISH }
 
     struct AgentState {
         uint32  totalDecisions;
@@ -31,8 +32,17 @@ contract AgentTrader {
     }
 
     struct PriceRecord {
+        Asset   asset;
+        uint256 price;
+        uint256 timestamp;
+    }
+
+    struct Decision {
         Asset     asset;
         uint256   price;
+        Direction direction;
+        uint8     confidence;
+        string    reason;
         uint256   timestamp;
     }
 
@@ -42,11 +52,13 @@ contract AgentTrader {
 
     AgentState public agent;
     PriceRecord[] public priceHistory;
+    Decision[] public decisions;
 
     // Track pending HTTP requests (first-execution phase)
     mapping(bytes32 => Asset) public pendingAsset;
 
     event PriceFetched(Asset indexed asset, uint256 price, uint256 timestamp);
+    event DecisionMade(Asset indexed asset, Direction direction, uint8 confidence, uint256 price, uint256 timestamp);
     event AgentInitialized(address indexed owner, string name);
 
     constructor() {
@@ -154,16 +166,81 @@ contract AgentTrader {
         return "";
     }
 
+    // ── Decision Engine ─────────────────────────────────────────────
+
+    /**
+     * @notice Autonomous on-chain decision: compares latest 2 prices, stores direction
+     * @param _asset 1=BTC, 2=ETH, 3=SOL
+     */
+    function makeDecision(uint256 _asset) external returns (uint256) {
+        require(agent.active, "Agent inactive");
+        require(_asset >= ASSET_BTC && _asset <= ASSET_SOL, "Invalid asset");
+
+        // Find latest two price records for this asset
+        uint256 cp;
+        uint256 pp;
+        (cp, pp) = _getLastTwoPrices(Asset(_asset));
+        require(cp > 0, "No price data for asset");
+
+        Direction dir;
+        uint8 conf;
+
+        if (pp == 0) {
+            dir = Direction.HOLD;
+            conf = 50;
+        } else if (cp > pp) {
+            dir = Direction.BULLISH;
+            uint256 cpct = ((cp - pp) * 10000) / pp;
+            if (cpct >= 300) conf = 85;
+            else if (cpct >= 100) conf = 70;
+            else conf = 55;
+        } else if (cp < pp) {
+            dir = Direction.BEARISH;
+            uint256 cpct = ((pp - cp) * 10000) / pp;
+            if (cpct >= 300) conf = 85;
+            else if (cpct >= 100) conf = 70;
+            else conf = 55;
+        } else {
+            dir = Direction.HOLD;
+            conf = 60;
+        }
+
+        decisions.push(Decision(Asset(_asset), cp, dir, conf, "", block.timestamp));
+        agent.totalDecisions++;
+        agent.lastActivityBlock = block.number;
+
+        emit DecisionMade(Asset(_asset), dir, conf, cp, block.timestamp);
+        return uint256(dir);
+    }
+
     // ── Views ─────────────────────────────────────────────────────
     function getAgentState() external view returns (AgentState memory) { return agent; }
     function getPriceCount() external view returns (uint256) { return priceHistory.length; }
+    function getDecisionCount() external view returns (uint256) { return decisions.length; }
     function getLatestPrice() external view returns (PriceRecord memory) {
         require(priceHistory.length > 0, "No prices yet");
         return priceHistory[priceHistory.length - 1];
     }
+    function getLatestDecision() external view returns (Decision memory) {
+        require(decisions.length > 0, "No decisions yet");
+        return decisions[decisions.length - 1];
+    }
     function getContractBalance() external view returns (uint256) { return address(this).balance; }
 
     // ── String Utilities ───────────────────────────────────────────
+
+    /// @notice Find latest two price records for an asset
+    function _getLastTwoPrices(Asset a) internal view returns (uint256 latest, uint256 prev) {
+        uint256 len = priceHistory.length;
+        for (uint256 i = len; i > 0; i--) {
+            if (priceHistory[i - 1].asset == a) {
+                if (latest == 0) latest = priceHistory[i - 1].price;
+                else { prev = priceHistory[i - 1].price; return (latest, prev); }
+            }
+        }
+        return (latest, 0);
+    }
+
     function indexOf(bytes memory h, bytes memory n) internal pure returns (uint256) {
         if (n.length == 0) return 0;
         if (h.length < n.length) return type(uint256).max;

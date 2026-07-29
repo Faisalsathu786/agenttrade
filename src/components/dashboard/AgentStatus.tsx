@@ -1,40 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { t, Lang } from '@/lib/i18n';
 import { AGENT_TRADER, RITUAL_EXPLORER } from '@/lib/contracts';
-import { ethCall, AGENT_STATE_SELECTOR, decodeAgentState, getBlockNumber } from '@/lib/rpc';
 
-export default function AgentStatus({ lang }: { lang: Lang }) {
-  const [decisions, setDecisions] = useState<number | null>(null);
-  const [active, setActive] = useState(true);
-  const [blockNumber, setBlockNumber] = useState<number | null>(null);
-  const [error, setError] = useState(false);
+interface OnChainState {
+  totalDecisions: number;
+  active: boolean;
+  lastActivityBlock: number;
+}
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [stateHex, currentBlock] = await Promise.all([
-          ethCall(AGENT_TRADER, AGENT_STATE_SELECTOR),
-          getBlockNumber(),
-        ]);
-        const state = decodeAgentState(stateHex);
-        setDecisions(state.totalDecisions);
-        setActive(state.active);
-        setBlockNumber(currentBlock);
-      } catch {
-        setError(true);
-      }
-    }
-    load();
-    // Refresh every 30s
-    const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
-  }, []);
+export default function AgentStatus({ lang, onChainState }: { lang: Lang; onChainState: OnChainState | null }) {
+  const decisions = onChainState?.totalDecisions ?? null;
+  const active = onChainState?.active ?? true;
+  const blockNumber = onChainState?.lastActivityBlock ?? null;
 
-  // Compute uptime from current block — deployment was ~100 blocks ago
-  const deployBlock = blockNumber ? blockNumber - 100 : null;
-  const uptimeMins = deployBlock ? Math.floor((deployBlock * 2) / 60) : 0; // ~2s per block
+  const uptimeMins = blockNumber ? Math.floor((blockNumber * 2) / 60) : 0;
   const uptimeDisplay = uptimeMins < 60 ? `${uptimeMins}m` : `${Math.floor(uptimeMins / 60)}h ${uptimeMins % 60}m`;
 
   return (
@@ -51,19 +31,19 @@ export default function AgentStatus({ lang }: { lang: Lang }) {
         <div>
           <div className="caption" style={{ marginBottom: 4 }}>{t('agent.decisions', lang)}</div>
           <div className="h2 mono" style={{ margin: 0 }}>
-            {decisions !== null ? decisions : error ? '—' : '...'}
+            {decisions !== null ? decisions : '...'}
           </div>
         </div>
         <div>
           <div className="caption" style={{ marginBottom: 4 }}>{t('agent.performance', lang)}</div>
           <div className="h2 mono" style={{ margin: 0, color: 'var(--text-dim)' }}>
-            {decisions !== null ? '—' : error ? '—' : '...'}
+            {decisions !== null ? (decisions > 0 ? 'Active' : 'Initializing') : '...'}
           </div>
         </div>
         <div>
           <div className="caption" style={{ marginBottom: 4 }}>{t('agent.uptime', lang)}</div>
           <div className="h2 mono" style={{ margin: 0 }}>
-            {blockNumber ? uptimeDisplay : error ? '—' : '...'}
+            {blockNumber ? uptimeDisplay : '...'}
           </div>
         </div>
       </div>

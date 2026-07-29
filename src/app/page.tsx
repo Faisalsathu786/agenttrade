@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Lang, getLangFromStorage, t } from '@/lib/i18n';
+import { AGENT_TRADER } from '@/lib/contracts';
+import { ethCall, AGENT_STATE_SELECTOR, LATEST_DECISION_SELECTOR, decodeAgentState, decodeLatestDecision } from '@/lib/rpc';
+import type { DecisionData } from '@/components/dashboard/DecisionFeed';
 import Header from '@/components/layout/Header';
 import AgentStatus from '@/components/dashboard/AgentStatus';
 import PriceCard from '@/components/dashboard/PriceCard';
@@ -34,51 +37,89 @@ interface PriceData {
   change24h: number;
 }
 
+interface OnChainState {
+  totalDecisions: number;
+  active: boolean;
+  lastActivityBlock: number;
+}
+
 export default function DashboardPage() {
   const [lang, setLang] = useState<Lang>(getLangFromStorage);
   const [prices, setPrices] = useState<Record<string, PriceData | null>>({ BTC: null, ETH: null, SOL: null });
   const [loading, setLoading] = useState(true);
+  const [decisionLoading, setDecisionLoading] = useState(true);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [decisions, setDecisions] = useState<DecisionData[]>([]);
+  const [lastDecisionTime, setLastDecisionTime] = useState(0);
+  const [onChainState, setOnChainState] = useState<OnChainState | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([
     { type: 'decision', asset: 'system', detail: 'AgentTrade V1 deployed on Ritual Chain (testnet)', time: '30 min ago' },
-    { type: 'price', asset: 'system', detail: 'Contract 0x27ecB...499843 registered', time: '15 min ago' },
   ]);
 
-  // Fetch live prices from CoinGecko
+  // Fetch CoinGecko prices
   const fetchPrices = useCallback(async () => {
     try {
       const ids = Object.values(COINGECKO_IDS).join(',');
       const res = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
-        { next: { revalidate: 60 } }
+        `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
       );
       const data = await res.json();
       const newPrices: Record<string, PriceData | null> = {};
       for (const [key, cgId] of Object.entries(COINGECKO_IDS)) {
         const coin = data[cgId];
-        if (coin) {
-          newPrices[key] = { price: coin.usd, change24h: coin.usd_24h_change ?? 0 };
-        }
+        if (coin) newPrices[key] = { price: coin.usd, change24h: coin.usd_24h_change ?? 0 };
       }
       setPrices((prev) => ({ ...prev, ...newPrices }));
       setLoading(false);
-    } catch {
-      // Retry on next interval
-      setLoading(false);
-    }
+    } catch { setLoading(false); }
   }, []);
+
+  // Fetch on-chain decisions and agent state
+  const fetchOnChain = useCallback(async () => {
+    try {
+      const [stateHex, decisionHex] = await Promise.all([
+        ethCall(AGENT_TRADER, AGENT_STATE_SELECTOR),
+        ethCall(AGENT_TRADER, LATEST_DECISION_SELECTOR),
+      ]);
+
+      const state = decodeAgentState(stateHex);
+      setOnChainState(state);
+      setDecisionError(null);
+
+      // Only update if there's a new decision
+      if (state.totalDecisions > 0 && decisionHex && decisionHex !== '0x') {
+        try {
+          const d = decodeLatestDecision(decisionHex);
+          if (d.timestamp !== lastDecisionTime) {
+            setLastDecisionTime(d.timestamp);
+            // Check if this decision is already in our list
+            setDecisions((prev) => {
+              const exists = prev.some((p) => p.timestamp === d.timestamp);
+              return exists ? prev : [d, ...prev.slice(0, 9)];
+            });
+          }
+        } catch { /* decode may fail for empty state, ignore */ }
+      }
+
+      setDecisionLoading(false);
+    } catch (e) {
+      setDecisionError('Ritual RPC unreachable — showing cached data');
+      setDecisionLoading(false);
+    }
+  }, [lastDecisionTime]);
 
   useEffect(() => {
     fetchPrices();
-    const interval = setInterval(fetchPrices, 60000); // Refresh every 60s
+    fetchOnChain();
+    const interval = setInterval(() => { fetchPrices(); fetchOnChain(); }, 10000);
     return () => clearInterval(interval);
-  }, [fetchPrices]);
+  }, [fetchPrices, fetchOnChain]);
 
   const handleFetchPrice = useCallback((asset: string) => {
     setActivityLog((prev) => [
       { type: 'price', asset, detail: `Price fetch triggered for ${asset}`, time: 'just now' },
       ...prev.slice(0, 19),
     ]);
-    // In production: calls contract.fetchPrice(assetId) on Ritual Chain
     const coingeckoId = COINGECKO_IDS[asset];
     if (coingeckoId) {
       fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd&include_24hr_change=true`)
@@ -103,12 +144,13 @@ export default function DashboardPage() {
       <Header lang={lang} onLangChange={setLang} />
 
       <main className="dashboard-grid animate-in">
-        {/* Agent Status — full width */}
         <div className="col-span-3">
-          <AgentStatus lang={lang} />
+          <AgentStatus
+            lang={lang}
+            onChainState={onChainState}
+          />
         </div>
 
-        {/* 3 Price Cards — LIVE from CoinGecko */}
         {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
           <PriceCard
             key={asset}
@@ -122,7 +164,6 @@ export default function DashboardPage() {
           />
         ))}
 
-        {/* How It Works — explainer card */}
         <div className="col-span-3">
           <div className="glass-card" style={{ padding: '24px' }}>
             <h3 className="section-title" style={{ marginBottom: 16, color: 'var(--accent-violet)' }}>
@@ -132,32 +173,34 @@ export default function DashboardPage() {
               <div className="how-step">
                 <div className="how-step-num">1</div>
                 <h4>HTTP Precompile</h4>
-                <p className="caption">Smart contract fetches live prices from CoinGecko via Ritual&apos;s HTTP precompile (0x0801) — no oracle needed. TEE-verified.</p>
+                <p className="caption">Smart contract fetches live prices from CoinGecko via Ritual HTTP precompile (0x0801) — no oracle needed. TEE-verified.</p>
               </div>
               <div className="how-step">
                 <div className="how-step-num">2</div>
-                <h4>LLM Analysis</h4>
-                <p className="caption">AI evaluates market data via LLM precompile (0x0802) — combines price action, RSI, volume, and trend structure into a trade decision.</p>
+                <h4>Agent Analysis</h4>
+                <p className="caption">On-chain decision engine compares price trends — BULLISH, BEARISH, or HOLD with confidence score. Every decision verifiable.</p>
               </div>
               <div className="how-step">
                 <div className="how-step-num">3</div>
                 <h4>On-Chain Decision</h4>
-                <p className="caption">BUY / SELL / HOLD decision stored on-chain. Fully auditable — every price feed, every analysis, every trade decision is verifiable.</p>
+                <p className="caption">Direction + confidence stored on-chain. Every price feed, every analysis, every trade decision is auditable and transparent.</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Decision Feed */}
         <div className="col-span-2">
-          <DecisionFeed lang={lang} />
+          <DecisionFeed
+            lang={lang}
+            decisions={decisions}
+            loading={decisionLoading}
+            error={decisionError}
+          />
         </div>
 
-        {/* Activity Log */}
         <ActivityLog lang={lang} entries={activityLog} />
       </main>
 
-      {/* Footer */}
       <footer className="app-footer">
         <span>{t('footer.built', lang)} · Ritual Chain (testnet)</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -35,11 +35,9 @@ export function decodeAgentState(hex: string) {
   const raw = hex.replace('0x', '');
   const totalDecisions = parseInt(raw.substring(0, 64), 16);
   const pnlHex = raw.substring(64, 128);
-  // Simple int256 decoder: check sign bit, convert to number (18 decimals)
   const firstByte = parseInt(pnlHex.substring(0, 2), 16);
   let paperPnL: number;
   if (firstByte >= 0x80) {
-    // Negative — two's complement
     const absVal = BigInt('0x' + pnlHex) * BigInt(-1);
     paperPnL = -Number(absVal / BigInt('1000000000000000000'));
   } else {
@@ -48,6 +46,37 @@ export function decodeAgentState(hex: string) {
   const lastActivityBlock = parseInt(raw.substring(128, 192), 16);
   const active = parseInt(raw.substring(192, 256), 16) === 1;
   return { totalDecisions, paperPnL, lastActivityBlock, active };
+}
+
+/** Decode the latest decision from getLatestDecision() */
+export function decodeLatestDecision(hex: string) {
+  const raw = hex.replace('0x', '');
+  // Struct ABI: (offset, asset, price, direction, confidence, reason_offset, timestamp, reason_len)
+  // 0x00 = struct offset (32 bytes) → skip
+  // 0x20 = asset
+  // 0x40 = price
+  // 0x60 = direction
+  // 0x80 = confidence
+  // 0xA0 = reason offset
+  // 0xC0 = timestamp
+  const asset = parseInt(raw.substring(64, 128), 16);
+  const price = parseInt(raw.substring(128, 192), 16);
+  const direction = parseInt(raw.substring(192, 256), 16);
+  const confidence = parseInt(raw.substring(256, 320), 16);
+  const timestamp = parseInt(raw.substring(384, 448), 16);
+  
+  const dirLabels = ['HOLD', 'BULLISH', 'BEARISH'];
+  const tsMs = timestamp * 1000;
+  return {
+    asset: ['?', 'BTC', 'ETH', 'SOL'][asset] || '?',
+    assetId: asset,
+    price,
+    direction: dirLabels[direction] || 'HOLD',
+    directionNum: direction,
+    confidence,
+    timestamp,
+    age: Math.floor((Date.now() - tsMs) / 60000),
+  };
 }
 
 /** ABI-encode fetchPrice(uint256) */
@@ -59,3 +88,16 @@ export function encodeFetchPrice(assetId: number): string {
 
 /** ABI for getAgentState() — selector 0x39fdf729 */
 export const AGENT_STATE_SELECTOR = '0x39fdf729';
+
+/** ABI for getDecisionCount() — selector 0x7f7e29e7 */
+export const DECISION_COUNT_SELECTOR = '0x7f7e29e7';
+
+/** ABI for getLatestDecision() — selector 0x7e3f56b7 */
+export const LATEST_DECISION_SELECTOR = '0x7e3f56b7';
+
+/** ABI-encode makeDecision(uint256) — selector 0xc6e9dc24 */
+export function encodeMakeDecision(assetId: number): string {
+  const sig = '0xc6e9dc24'; // keccak256("makeDecision(uint256)") first 4 bytes
+  const param = assetId.toString(16).padStart(64, '0');
+  return sig + param;
+}
