@@ -126,7 +126,7 @@ export default function DashboardPage() {
         <div className="col-span-3">
           <div className="glass-card" style={{ padding: '24px' }}>
             <h3 className="section-title" style={{ marginBottom: 16, color: 'var(--accent-violet)' }}>
-              ⚡ How AgentTrade Works
+              How AgentTrade Works
             </h3>
             <div className="how-grid">
               <div className="how-step">

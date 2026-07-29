@@ -133,7 +133,7 @@ export default function PriceCard({ lang, asset, data, logoUrl, accentColor = '#
           e.currentTarget.style.background = 'var(--accent-gold-dim)';
         }}
       >
-        {'\u{1F504}'} {t('price.trigger', lang)}
+        {t('price.trigger', lang)}
       </button>
     </div>
   );
