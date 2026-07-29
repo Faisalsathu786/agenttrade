@@ -50,9 +50,9 @@ export function decodeAgentState(hex: string) {
   return { totalDecisions, paperPnL, lastActivityBlock, active };
 }
 
-/** ABI-encode fetchPrice(uint8) */
+/** ABI-encode fetchPrice(uint256) */
 export function encodeFetchPrice(assetId: number): string {
-  const sig = '0xb6336377'; // keccak256("fetchPrice(uint8)") first 4 bytes
+  const sig = '0x1559f782'; // keccak256("fetchPrice(uint256)") first 4 bytes
   const param = assetId.toString(16).padStart(64, '0');
   return sig + param;
 }

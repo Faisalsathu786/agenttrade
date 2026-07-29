@@ -11,7 +11,7 @@ export const ASYNC_DELIVERY  = '0x5A16214fF555848411544b005f7Ac063742f39F6';
 export const SCHEDULER       = '0x56e776BAE2DD60664b69Bd5F865F1180ffB7D58B';
 
 // AgentTrader contract — deployed on Ritual testnet
-export const AGENT_TRADER = '0x27ecB2697375A1c64703cacA5a2771917F499843';
+export const AGENT_TRADER = '0x16cC1dD06e09466836D6c1e5E3440Ad92701feCd';
 
 export const AGENT_TRADER_ABI = [
   // State
