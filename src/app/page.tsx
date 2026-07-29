@@ -10,6 +10,7 @@ import AgentStatus from '@/components/dashboard/AgentStatus';
 import PriceCard from '@/components/dashboard/PriceCard';
 import DecisionFeed from '@/components/dashboard/DecisionFeed';
 import ActivityLog from '@/components/dashboard/ActivityLog';
+import AdaptionAI from '@/components/dashboard/AdaptionAI';
 
 const COINGECKO_IDS: Record<string, string> = { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana' };
 
@@ -149,6 +150,10 @@ export default function DashboardPage() {
             lang={lang}
             onChainState={onChainState}
           />
+        </div>
+
+        <div className="col-span-3">
+          <AdaptionAI lang={lang} />
         </div>
 
         {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
