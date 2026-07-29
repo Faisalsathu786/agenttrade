@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Lang, t } from '@/lib/i18n';
+import { Cpu, ExternalLink, CheckCircle2, Loader2 } from 'lucide-react';
 
 interface AdaptionInfo {
   dataset_id: string;
@@ -12,21 +12,12 @@ interface AdaptionInfo {
   minutes_est: number;
   credits_est: number;
   dashboard_url: string;
+  ready?: boolean;
 }
 
-interface ModelMetrics {
-  accuracy: number;
-  precision: number;
-  recall: number;
-  totalPredictions: number;
-  lastUpdated: string;
-}
-
-export default function AdaptionAIPanel({ lang }: { lang: Lang }) {
+export default function AdaptionAI() {
   const [info, setInfo] = useState<AdaptionInfo | null>(null);
-  const [metrics, setMetrics] = useState<ModelMetrics | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [timeLeft, setTimeLeft] = useState('');
 
   useEffect(() => {
     fetch('/data/adaption_info.json')
@@ -35,128 +26,86 @@ export default function AdaptionAIPanel({ lang }: { lang: Lang }) {
       .catch(() => {});
   }, []);
 
-  // Countdown timer for training
-  useEffect(() => {
-    if (!info || info.status !== 'running') return;
-    const startedAt = Date.now() - 5000; // approximate
-    const totalMs = (info.minutes_est || 58) * 60 * 1000;
-    
-    const tick = () => {
-      const elapsed = Date.now() - startedAt;
-      const remaining = Math.max(0, totalMs - elapsed);
-      const mins = Math.floor(remaining / 60000);
-      const secs = Math.floor((remaining % 60000) / 1000);
-      setTimeLeft(`${mins}m ${secs}s`);
-    };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, [info]);
+  const isReady = info?.ready || info?.status === 'succeeded';
+  const isRunning = info?.status === 'running';
 
   return (
-    <div className="glass-card" style={{ padding: '20px' }}>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', marginBottom: expanded ? 16 : 0 }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div style={{
-          width: 36, height: 36, borderRadius: 10,
-          background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 18, flexShrink: 0,
-        }}>🧠</div>
-        <div style={{ flex: 1 }}>
-          <div className="h3" style={{ margin: 0 }}>Adaption AI</div>
-          <div className="caption" style={{ margin: 0 }}>
-            {info ? (
-              info.status === 'running'
-                ? `Training... ${timeLeft} remaining`
-                : info.status === 'succeeded'
-                ? 'Model ready ✓'
-                : 'Pending...'
-            ) : 'Not connected'}
+    <div className="card">
+      <div className="card-header" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer', marginBottom: expanded ? 16 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: isReady ? 'var(--success-dim)' : 'var(--primary-dim)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: isReady ? 'var(--success)' : 'var(--primary)',
+          }}>
+            <Cpu size={16} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Adaption AI Model</div>
+            <div className="caption">
+              {isReady ? 'Trained · Ready' : isRunning ? 'Training in progress...' : 'Not connected'}
+            </div>
           </div>
         </div>
-        <div style={{
-          width: 10, height: 10, borderRadius: '50%',
-          background: info?.status === 'running' ? 'var(--accent-violet)' :
-                      info?.status === 'succeeded' ? '#22c55e' :
-                      '#6b7280',
-          boxShadow: info?.status === 'running'
-            ? '0 0 8px rgba(99,102,241,.6)'
-            : 'none',
-          animation: info?.status === 'running' ? 'pulse 2s infinite' : 'none',
-        }} />
+        <span className={`badge ${isReady ? 'badge-success' : isRunning ? 'badge-primary' : 'badge-warning'}`}>
+          {isReady ? <CheckCircle2 size={12} /> : isRunning ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+          {isReady ? 'Ready' : isRunning ? 'Training' : 'Pending'}
+        </span>
       </div>
 
       {expanded && info && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
           <div className="divider" />
 
-          {/* Dataset info */}
-          <div className="metrics-row">
-            <div className="metric-item">
-              <div className="caption">Dataset</div>
-              <div className="mono" style={{ fontSize: 13 }}>{info.dataset_id.slice(0, 8)}...</div>
-            </div>
-            <div className="metric-item">
-              <div className="caption">Rows</div>
-              <div className="mono">{info.rows.toLocaleString()}</div>
-            </div>
-            <div className="metric-item">
-              <div className="caption">Assets</div>
-              <div className="mono">{info.symbols.join('·')}</div>
-            </div>
-          </div>
-
-          {/* Training progress */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span className="caption">Training Progress</span>
-              <span className="caption mono">{timeLeft || '—'}</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{
-                width: '45%',
-                background: 'linear-gradient(90deg, #6366f1, #a855f7)',
-                animation: 'progressPulse 2s infinite',
-              }} />
-            </div>
-          </div>
-
-          {/* Model info */}
-          <div style={{ background: 'rgba(99,102,241,.1)', borderRadius: 8, padding: '12px' }}>
-            <div className="caption" style={{ marginBottom: 6 }}>AutoScientist: Price → Decision</div>
-            <div className="metrics-row">
-              <div className="metric-item">
-                <div className="caption">Est. Cost</div>
-                <div className="mono">38 credits</div>
-              </div>
-              <div className="metric-item">
-                <div className="caption">Est. Time</div>
-                <div className="mono">~58 min</div>
+          <div className="metrics-row" style={{ marginBottom: 14 }}>
+            <div className="metric-item" style={{ flex: 1 }}>
+              <div className="metric-label">Dataset</div>
+              <div className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-primary)' }}>
+                {info.dataset_id.slice(0, 12)}...
               </div>
             </div>
+            <div className="metric-item" style={{ flex: 1 }}>
+              <div className="metric-label">Training Rows</div>
+              <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{info.rows.toLocaleString()}</div>
+            </div>
+            <div className="metric-item" style={{ flex: 1 }}>
+              <div className="metric-label">Assets</div>
+              <div style={{ fontWeight: 500, fontSize: '0.8rem' }}>{info.symbols.join(', ')}</div>
+            </div>
+            <div className="metric-item" style={{ flex: 1 }}>
+              <div className="metric-label">Credits Used</div>
+              <div style={{ fontWeight: 500, fontSize: '0.8rem' }}>{info.credits_est}</div>
+            </div>
           </div>
 
-          {/* Links */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <a
-              href={info.dashboard_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-sm btn-outline"
-              style={{ flex: 1, textAlign: 'center' }}
-            >
-              Open Adaption Dashboard ↗
-            </a>
-          </div>
+          {isReady && (
+            <div style={{
+              background: 'var(--success-dim)',
+              border: '1px solid rgba(34,197,94,0.2)',
+              borderRadius: 8,
+              padding: 10,
+              marginBottom: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={14} style={{ color: 'var(--success)' }} />
+                <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--success)' }}>
+                  Model training complete — ready for inference
+                </span>
+              </div>
+            </div>
+          )}
 
-          <div className="caption" style={{ color: 'var(--text-dim)', lineHeight: 1.4, marginTop: 4 }}>
-            Training on {info.rows.toLocaleString()} rows of BTC, ETH, SOL hourly data.
-            Model learns to predict {t('agent.decision', lang)} (BULLISH/BEARISH/HOLD)
-            from price, RSI, SMA crossovers.
-          </div>
+          <a
+            href={info.dashboard_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-outline btn-sm"
+            style={{ width: '100%' }}
+          >
+            <ExternalLink size={12} />
+            Adaption Dashboard
+          </a>
         </div>
       )}
     </div>
