@@ -343,3 +343,52 @@ html, body {
   font-weight: 500;
   color: var(--accent-violet);
 }
+
+/* ─── How AgentTrade Works ────────────────────────────── */
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .how-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.how-step {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  position: relative;
+}
+
+.how-step-num {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-gold), var(--accent-violet));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #000;
+  margin-bottom: 12px;
+}
+
+.how-step h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.how-step p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}

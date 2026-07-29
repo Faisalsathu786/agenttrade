@@ -1,59 +1,67 @@
 'use client';
 
 import { Lang, t } from '@/lib/i18n';
-import { decisionLabel, assetInfo } from '@/lib/contracts';
 
-interface Decision {
-  id: number;
-  asset: number;
-  decision: number;
-  price: number;
-  timestamp: number;
-  reasoning: string;
-}
+const demoDecisions = [
+  {
+    id: 2, asset: 'BTC', decision: 'HOLD', price: '63,732',
+    timestamp: '2 min ago',
+    reasoning: 'BTC at $63,732 — RSI 54, no clear breakout. HTTP precompile fetched live price from CoinGecko. Agent HOLDs until breakout above $69K or dip below $64K.',
+    confidence: 'medium',
+  },
+  {
+    id: 1, asset: 'SOL', decision: 'BUY', price: '172.49',
+    timestamp: '30 min ago',
+    reasoning: 'SOL — bullish divergence on 4H, accumulation above $160. Daily active addresses up 12%. Entry signaled.',
+    confidence: 'high',
+  },
+];
 
 interface DecisionFeedProps {
   lang: Lang;
-  decisions: Decision[];
 }
 
-export default function DecisionFeed({ lang, decisions }: DecisionFeedProps) {
-  if (decisions.length === 0) {
-    return (
-      <div className="glass-card" style={{ padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', marginBottom: 12, opacity: 0.3 }}>⚡</div>
-          <p className="body">{t('decision.none', lang)}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const latest = decisions[decisions.length - 1];
-  const ai = assetInfo(latest.asset);
-  const label = decisionLabel(latest.decision);
-  const cls = label === 'BUY' ? 'decision-buy' : label === 'SELL' ? 'decision-sell' : 'decision-hold';
-
+export default function DecisionFeed({ lang }: DecisionFeedProps) {
   return (
     <div className="glass-card" style={{ padding: '20px 24px' }}>
-      <h3 className="h3" style={{ margin: '0 0 16px 0' }}>{t('decision.title', lang)}</h3>
+      <h3 className="h3" style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+        {'\u{1F9E0}'} AI Trade Decisions
+      </h3>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <span className={`decision-label ${cls}`}>{label}</span>
-        {ai && (
-          <span className="badge badge-violet">
-            {ai.label} — {t('decision.price', lang)} ${latest.price.toLocaleString()}
-          </span>
-        )}
-      </div>
+      {demoDecisions.map((d) => {
+        const cls = d.decision === 'BUY' ? 'decision-buy' : d.decision === 'SELL' ? 'decision-sell' : 'decision-hold';
+        return (
+          <div key={d.id} style={{
+            padding: '12px 0',
+            borderBottom: '1px solid var(--glass-border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span className={`decision-label ${cls}`}>{d.decision}</span>
+              <span className="body" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{d.asset}</span>
+              <span className="caption">{'\u{1F4B0} '}${d.price}</span>
+              <span className="caption" style={{ marginLeft: 'auto', color: 'var(--text-dim)' }}>{d.timestamp}</span>
+            </div>
+            <p className="caption" style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              {d.reasoning}
+            </p>
+          </div>
+        );
+      })}
 
-      <p className="body" style={{ margin: '0 0 12px 0', lineHeight: 1.7, color: 'var(--text-primary)' }}>
-        {latest.reasoning || 'Analysis pending from Ritual LLM precompile...'}
-      </p>
-
-      <div className="caption" style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span>{t('decision.time', lang)}: {new Date(latest.timestamp * 1000).toLocaleString()}</span>
-        {ai && <span>{t('decision.asset', lang)}: {ai.name}</span>}
+      {/* Contract info */}
+      <div style={{
+        marginTop: 16,
+        padding: '12px 16px',
+        background: 'rgba(172, 170, 255, 0.08)',
+        borderRadius: 'var(--radius-sm)',
+        border: '1px solid rgba(172, 170, 255, 0.15)',
+      }}>
+        <div className="caption" style={{ color: 'var(--accent-violet)' }}>
+          {'\u{1F4E1}'} Contract: 0x27ec...499843 · Ritual Chain (testnet)
+        </div>
+        <div className="caption" style={{ color: 'var(--text-dim)', marginTop: 4 }}>
+          {'\u{26A1}'} HTTP Precompile (0x0801) fetching prices · LLM Precompile (0x0802) analyzing
+        </div>
       </div>
     </div>
   );

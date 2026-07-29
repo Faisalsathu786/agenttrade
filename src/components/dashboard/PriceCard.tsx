@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
+import Image from 'next/image';
 import { Lang, t } from '@/lib/i18n';
-import { ASSETS, AssetKey } from '@/lib/contracts';
+import { AssetKey } from '@/lib/contracts';
 
 interface PriceData {
   price: number;
@@ -13,11 +14,13 @@ interface PriceCardProps {
   lang: Lang;
   asset: AssetKey;
   data: PriceData | null;
+  logoUrl?: string;
+  accentColor?: string;
+  loading?: boolean;
   onFetch?: (asset: AssetKey) => void;
 }
 
-export default function PriceCard({ lang, asset, data, onFetch }: PriceCardProps) {
-  const info = ASSETS[asset];
+export default function PriceCard({ lang, asset, data, logoUrl, accentColor = '#888', loading, onFetch }: PriceCardProps) {
   const isPositive = data && data.change24h >= 0;
   const isNegative = data && data.change24h < 0;
 
@@ -46,48 +49,66 @@ export default function PriceCard({ lang, asset, data, onFetch }: PriceCardProps
         left: 0,
         right: 0,
         height: 3,
-        background: info.color,
+        background: accentColor,
         opacity: 0.6,
-        borderTopLeftRadius: 'var(--radius-lg)',
-        borderTopRightRadius: 'var(--radius-lg)',
       }} />
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: `${info.color}18`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '0.75rem',
-              color: info.color,
-            }}>
-              {info.label}
-            </span>
-            <span className="body" style={{ color: 'var(--text-primary)' }}>{info.name}</span>
+            {logoUrl ? (
+              <Image
+                src={logoUrl}
+                alt={asset}
+                width={28}
+                height={28}
+                style={{ borderRadius: '50%' }}
+                unoptimized
+              />
+            ) : (
+              <span style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: `${accentColor}22`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 700, fontSize: '0.7rem', color: accentColor,
+              }}>
+                {asset.slice(0, 2)}
+              </span>
+            )}
+            <span className="body" style={{ color: 'var(--text-primary)' }}>{asset}</span>
           </div>
         </div>
-        <span className="badge badge-gold">{t('price.live', lang)}</span>
-      </div>
-
-      <div className="price-value mono" style={{ marginBottom: 6 }}>
-        {data ? (
-          <span className={`num-tick ${isPositive ? 'up' : isNegative ? 'down' : ''}`}>
-            {formattedPrice}
+        {!loading && data && (
+          <span className="badge badge-gold" style={{ fontSize: '0.7rem' }}>
+            {t('price.live', lang)}
           </span>
-        ) : '—'}
+        )}
+        {loading && (
+          <span className="badge" style={{ background: 'var(--glass-border)', color: 'var(--text-dim)', fontSize: '0.7rem' }}>
+            loading...
+          </span>
+        )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className={`price-change ${isPositive ? 'positive' : isNegative ? 'negative' : ''}`}>
-          {formattedChange}
-        </span>
-        <span className="caption">{t('price.24h', lang)}</span>
+      <div className="price-value mono" style={{ marginBottom: 6, minHeight: 38 }}>
+        {loading ? (
+          <span style={{ color: 'var(--text-dim)', fontSize: '1.2rem' }}>—</span>
+        ) : data ? (
+          <span>{formattedPrice}</span>
+        ) : (
+          <span style={{ color: 'var(--text-dim)', fontSize: '1.2rem' }}>—</span>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 22 }}>
+        {data ? (
+          <>
+            <span className={`price-change ${isPositive ? 'positive' : isNegative ? 'negative' : ''}`}>
+              {formattedChange}
+            </span>
+            <span className="caption">{t('price.24h', lang)}</span>
+          </>
+        ) : <span className="caption" style={{ color: 'var(--text-dim)' }}>waiting for data...</span>}
       </div>
 
       <button
@@ -112,7 +133,7 @@ export default function PriceCard({ lang, asset, data, onFetch }: PriceCardProps
           e.currentTarget.style.background = 'var(--accent-gold-dim)';
         }}
       >
-        {t('price.trigger', lang)}
+        {'\u{1F504}'} {t('price.trigger', lang)}
       </button>
     </div>
   );

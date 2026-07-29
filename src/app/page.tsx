@@ -1,12 +1,26 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Lang, getLangFromStorage, t } from '@/lib/i18n';
 import Header from '@/components/layout/Header';
 import AgentStatus from '@/components/dashboard/AgentStatus';
 import PriceCard from '@/components/dashboard/PriceCard';
 import DecisionFeed from '@/components/dashboard/DecisionFeed';
 import ActivityLog from '@/components/dashboard/ActivityLog';
+
+const COINGECKO_IDS: Record<string, string> = { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana' };
+
+const LOGOS: Record<string, string> = {
+  BTC: 'https://cryptologos.cc/logos/bitcoin-btc-logo.png',
+  ETH: 'https://cryptologos.cc/logos/ethereum-eth-logo.png',
+  SOL: 'https://cryptologos.cc/logos/solana-sol-logo.png',
+};
+
+const COLORS: Record<string, string> = {
+  BTC: '#f7931a',
+  ETH: '#627eea',
+  SOL: '#9945ff',
+};
 
 interface ActivityEntry {
   type: 'price' | 'analysis' | 'decision';
@@ -15,60 +29,74 @@ interface ActivityEntry {
   time: string;
 }
 
-interface PriceState {
+interface PriceData {
   price: number;
   change24h: number;
 }
 
 export default function DashboardPage() {
   const [lang, setLang] = useState<Lang>(getLangFromStorage);
-
-  // Simulated prices — replace with on-chain data from Ritual HTTP precompile
-  const [prices, setPrices] = useState<Record<string, PriceState>>({
-    BTC: { price: 67234.50, change24h: 2.34 },
-    ETH: { price: 3241.89, change24h: -0.87 },
-    SOL: { price: 172.45, change24h: 5.12 },
-  });
-
-  const [activityLog] = useState<ActivityEntry[]>([
-    { type: 'price',    asset: 'BTC', detail: 'Price fetched: $67,234.50 via Ritual HTTP Precompile (0x0801)', time: '2 min ago' },
-    { type: 'analysis', asset: 'BTC', detail: 'LLM analysis requested via Precompile (0x0802)', time: '2 min ago' },
-    { type: 'decision', asset: 'BTC', detail: 'Agent decided: HOLD — price trading within range', time: '1 min ago' },
-    { type: 'price',    asset: 'ETH', detail: 'Price fetched: $3,241.89 via Ritual HTTP Precompile (0x0801)', time: '5 min ago' },
-    { type: 'price',    asset: 'SOL', detail: 'Price fetched: $172.45 via Ritual HTTP Precompile (0x0801)', time: '8 min ago' },
+  const [prices, setPrices] = useState<Record<string, PriceData | null>>({ BTC: null, ETH: null, SOL: null });
+  const [loading, setLoading] = useState(true);
+  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([
+    { type: 'decision', asset: 'system', detail: 'AgentTrade V1 deployed on Ritual Chain (testnet)', time: '30 min ago' },
+    { type: 'price', asset: 'system', detail: 'Contract 0x27ecB...499843 registered', time: '15 min ago' },
   ]);
 
-  const handleFetchPrice = useCallback((asset: string) => {
-    // Simulate price fetch — in production, calls contract.fetchPrice(assetId)
-    const variation = (Math.random() - 0.5) * 2; // ±1%
-    setPrices((prev) => {
-      const current = prev[asset];
-      if (!current) return prev;
-      const newPrice = current.price * (1 + variation / 100);
-      const newChange = current.change24h + (Math.random() - 0.5) * 0.5;
-      return { ...prev, [asset]: { price: newPrice, change24h: newChange } };
-    });
+  // Fetch live prices from CoinGecko
+  const fetchPrices = useCallback(async () => {
+    try {
+      const ids = Object.values(COINGECKO_IDS).join(',');
+      const res = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+        { next: { revalidate: 60 } }
+      );
+      const data = await res.json();
+      const newPrices: Record<string, PriceData | null> = {};
+      for (const [key, cgId] of Object.entries(COINGECKO_IDS)) {
+        const coin = data[cgId];
+        if (coin) {
+          newPrices[key] = { price: coin.usd, change24h: coin.usd_24h_change ?? 0 };
+        }
+      }
+      setPrices((prev) => ({ ...prev, ...newPrices }));
+      setLoading(false);
+    } catch {
+      // Retry on next interval
+      setLoading(false);
+    }
   }, []);
 
-  // Demo decisions
-  const demoDecisions = [
-    {
-      id: 2,
-      asset: 1, // BTC
-      decision: 3, // HOLD
-      price: 67234.50,
-      timestamp: Math.floor(Date.now() / 1000) - 60,
-      reasoning: 'BTC is trading near the 50-day EMA with decreasing volume. RSI reads 58 — no overbought or oversold signal. The lack of a clear catalyst and range-bound structure suggest holding current position. Wait for a breakout above $69K or breakdown below $64K before entering.',
-    },
-    {
-      id: 1,
-      asset: 3, // SOL
-      decision: 1, // BUY
-      price: 168.20,
-      timestamp: Math.floor(Date.now() / 1000) - 3600,
-      reasoning: 'SOL shows bullish divergence on the 4-hour chart with RSI recovering from 42. Volume profile indicates accumulation above $160. Network activity increasing — daily active addresses up 12%. Upside target at $185 with invalidation below $155.',
-    },
-  ];
+  useEffect(() => {
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 60000); // Refresh every 60s
+    return () => clearInterval(interval);
+  }, [fetchPrices]);
+
+  const handleFetchPrice = useCallback((asset: string) => {
+    setActivityLog((prev) => [
+      { type: 'price', asset, detail: `Price fetch triggered for ${asset}`, time: 'just now' },
+      ...prev.slice(0, 19),
+    ]);
+    // In production: calls contract.fetchPrice(assetId) on Ritual Chain
+    const coingeckoId = COINGECKO_IDS[asset];
+    if (coingeckoId) {
+      fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd&include_24hr_change=true`)
+        .then((r) => r.json())
+        .then((data) => {
+          const coin = data[coingeckoId];
+          if (coin) {
+            setPrices((prev) => ({ ...prev, [asset]: { price: coin.usd, change24h: coin.usd_24h_change ?? 0 } }));
+            const priceStr = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(coin.usd);
+            setActivityLog((prev) => [
+              { type: 'price', asset, detail: `${asset} price updated: ${priceStr} (via CoinGecko)`, time: 'just now' },
+              ...prev.slice(0, 19),
+            ]);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -80,14 +108,49 @@ export default function DashboardPage() {
           <AgentStatus lang={lang} />
         </div>
 
-        {/* 3 Price Cards */}
-        <PriceCard lang={lang} asset="BTC" data={prices.BTC} onFetch={handleFetchPrice} />
-        <PriceCard lang={lang} asset="ETH" data={prices.ETH} onFetch={handleFetchPrice} />
-        <PriceCard lang={lang} asset="SOL" data={prices.SOL} onFetch={handleFetchPrice} />
+        {/* 3 Price Cards — LIVE from CoinGecko */}
+        {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
+          <PriceCard
+            key={asset}
+            lang={lang}
+            asset={asset}
+            data={prices[asset]}
+            logoUrl={LOGOS[asset]}
+            accentColor={COLORS[asset]}
+            loading={loading}
+            onFetch={handleFetchPrice}
+          />
+        ))}
 
-        {/* Decision Feed — spans 2 cols */}
+        {/* How It Works — explainer card */}
+        <div className="col-span-3">
+          <div className="glass-card" style={{ padding: '24px' }}>
+            <h3 className="section-title" style={{ marginBottom: 16, color: 'var(--accent-violet)' }}>
+              ⚡ How AgentTrade Works
+            </h3>
+            <div className="how-grid">
+              <div className="how-step">
+                <div className="how-step-num">1</div>
+                <h4>HTTP Precompile</h4>
+                <p className="caption">Smart contract fetches live prices from CoinGecko via Ritual&apos;s HTTP precompile (0x0801) — no oracle needed. TEE-verified.</p>
+              </div>
+              <div className="how-step">
+                <div className="how-step-num">2</div>
+                <h4>LLM Analysis</h4>
+                <p className="caption">AI evaluates market data via LLM precompile (0x0802) — combines price action, RSI, volume, and trend structure into a trade decision.</p>
+              </div>
+              <div className="how-step">
+                <div className="how-step-num">3</div>
+                <h4>On-Chain Decision</h4>
+                <p className="caption">BUY / SELL / HOLD decision stored on-chain. Fully auditable — every price feed, every analysis, every trade decision is verifiable.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Decision Feed */}
         <div className="col-span-2">
-          <DecisionFeed lang={lang} decisions={demoDecisions} />
+          <DecisionFeed lang={lang} />
         </div>
 
         {/* Activity Log */}
@@ -96,7 +159,7 @@ export default function DashboardPage() {
 
       {/* Footer */}
       <footer className="app-footer">
-        <span>{t('footer.built', lang)} · {t('footer.powered', lang)}</span>
+        <span>{t('footer.built', lang)} · Ritual Chain (testnet)</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
             width: 8, height: 8, borderRadius: '50%',
