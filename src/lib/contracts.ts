@@ -10,8 +10,8 @@ export const RITUAL_WALLET   = '0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948';
 export const ASYNC_DELIVERY  = '0x5A16214fF555848411544b005f7Ac063742f39F6';
 export const SCHEDULER       = '0x56e776BAE2DD60664b69Bd5F865F1180ffB7D58B';
 
-// AgentTrader contract — update after deploy
-export const AGENT_TRADER = '0x0000000000000000000000000000000000000000'; // placeholder
+// AgentTrader contract — deployed on Ritual testnet
+export const AGENT_TRADER = '0x27ecB2697375A1c64703cacA5a2771917F499843';
 
 export const AGENT_TRADER_ABI = [
   // State
