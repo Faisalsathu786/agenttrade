@@ -10,25 +10,14 @@ import Topbar from '@/components/layout/Topbar';
 import AgentStatus from '@/components/dashboard/AgentStatus';
 import PriceCard from '@/components/dashboard/PriceCard';
 import DecisionFeed from '@/components/dashboard/DecisionFeed';
-import ActivityLog from '@/components/dashboard/ActivityLog';
-import AdaptionAI from '@/components/dashboard/AdaptionAI';
 import AIResearchAgent from '@/components/dashboard/AIResearchAgent';
 import AgentDecisionsPanel from '@/components/dashboard/AgentDecisions';
-import InfrastructureStatus from '@/components/dashboard/InfrastructureStatus';
-import ArchitectureOverview from '@/components/dashboard/ArchitectureOverview';
 
 const COINGECKO_IDS: Record<string, string> = { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana' };
 
 interface PriceData {
   price: number;
   change24h: number;
-}
-
-interface ActivityEntry {
-  type: string;
-  asset: string;
-  detail: string;
-  time: string;
 }
 
 interface OnChainState {
@@ -39,7 +28,7 @@ interface OnChainState {
 
 export default function DashboardPage() {
   const [lang, setLang] = useState<Lang>(getLangFromStorage);
-  const [activeSection, setActiveSection] = useState('status');
+  const [activeSection, setActiveSection] = useState('overview');
   const [prices, setPrices] = useState<Record<string, PriceData | null>>({ BTC: null, ETH: null, SOL: null });
   const [priceLoading, setPriceLoading] = useState(true);
   const [decisions, setDecisions] = useState<DecisionData[]>([]);
@@ -47,9 +36,6 @@ export default function DashboardPage() {
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [lastDecisionTime, setLastDecisionTime] = useState(0);
   const [onChainState, setOnChainState] = useState<OnChainState>({ totalDecisions: 0, active: false, lastActivityBlock: null });
-  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([
-    { type: 'decision', asset: 'System', detail: 'AgentTrade deployed on Ritual Chain testnet', time: 'now' },
-  ]);
 
   const fetchPrices = useCallback(async () => {
     try {
@@ -84,14 +70,14 @@ export default function DashboardPage() {
             const mapped: DecisionData = { symbol: d.asset, price: d.price, direction: d.direction, confidence: d.confidence, timestamp: d.timestamp };
             setDecisions((prev) => {
               const exists = prev.some((p) => p.timestamp === mapped.timestamp);
-              return exists ? prev : [mapped, ...prev.slice(0, 49)];
+              return exists ? prev : [mapped, ...prev.slice(0, 99)];
             });
           }
         } catch {}
       }
       setDecisionLoading(false);
     } catch {
-      setDecisionError('RPC unreachable — using cached data');
+      setDecisionError('RPC unreachable');
       setDecisionLoading(false);
     }
   }, [lastDecisionTime]);
@@ -103,22 +89,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchPrices, fetchOnChain]);
 
-  const handleFetchPrice = useCallback((asset: string) => {
-    setActivityLog((prev) => [
-      { type: 'price', asset, detail: 'Refresh triggered', time: 'now' },
-      ...prev.slice(0, 19),
-    ]);
-    const cgId = COINGECKO_IDS[asset];
-    if (cgId) {
-      fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=usd&include_24hr_change=true`)
-        .then((r) => r.json())
-        .then((data) => {
-          const coin = data[cgId];
-          if (coin) setPrices((prev) => ({ ...prev, [asset]: { price: coin.usd, change24h: coin.usd_24h_change ?? 0 } }));
-        }).catch(() => {});
-    }
-  }, []);
-
   return (
     <div className="app-shell">
       <Sidebar active={activeSection} onNavigate={setActiveSection} />
@@ -126,25 +96,31 @@ export default function DashboardPage() {
         <Topbar lang={lang} onLangChange={setLang} />
         <div style={{ padding: 'var(--space-6)', maxWidth: 1100 }}>
 
-          {/* TAB: Agent Status */}
-          {activeSection === 'status' && (
+          {activeSection === 'overview' && (
             <div className="animate-in">
               <AgentStatus
                 totalDecisions={onChainState.totalDecisions}
                 active={onChainState.active}
                 lastActivityBlock={onChainState.lastActivityBlock}
               />
-              <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <ArchitectureOverview />
-                <ActivityLog entries={activityLog} />
+              <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
+                  <PriceCard
+                    key={asset}
+                    asset={asset}
+                    data={prices[asset]}
+                    loading={priceLoading}
+                    onFetch={() => {}}
+                    logoUrl=""
+                  />
+                ))}
               </div>
             </div>
           )}
 
-          {/* TAB: Live Market */}
-          {activeSection === 'market' && (
+          {activeSection === 'markets' && (
             <div className="animate-in">
-              <div className="h2" style={{ marginBottom: 20 }}>Live Market</div>
+              <div className="h2" style={{ marginBottom: 20 }}>Market Prices</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                 {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
                   <PriceCard
@@ -152,74 +128,26 @@ export default function DashboardPage() {
                     asset={asset}
                     data={prices[asset]}
                     loading={priceLoading}
-                    onFetch={handleFetchPrice}
+                    onFetch={() => {}}
                     logoUrl=""
                   />
                 ))}
               </div>
-              <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <AgentStatus
-                  totalDecisions={onChainState.totalDecisions}
-                  active={onChainState.active}
-                  lastActivityBlock={onChainState.lastActivityBlock}
-                />
-                <InfrastructureStatus />
-              </div>
             </div>
           )}
 
-          {/* TAB: Decisions */}
-          {activeSection === 'decisions' && (
+          {activeSection === 'history' && (
             <div className="animate-in">
-              <div className="h2" style={{ marginBottom: 20 }}>On-Chain Decisions</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16, alignItems: 'start' }}>
                 <DecisionFeed decisions={decisions} loading={decisionLoading} error={decisionError} />
                 <AgentDecisionsPanel />
               </div>
             </div>
           )}
 
-          {/* TAB: AI Model */}
-          {activeSection === 'ai-model' && (
-            <div className="animate-in">
-              <div className="h2" style={{ marginBottom: 20 }}>Model & Performance</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <AdaptionAI />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <AgentStatus
-                    totalDecisions={onChainState.totalDecisions}
-                    active={onChainState.active}
-                    lastActivityBlock={onChainState.lastActivityBlock}
-                  />
-                  <InfrastructureStatus />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB: Research */}
-          {activeSection === 'assistant' && (
+          {activeSection === 'research' && (
             <div className="animate-in">
               <AIResearchAgent />
-            </div>
-          )}
-
-          {/* TAB: Infrastructure */}
-          {activeSection === 'infra' && (
-            <div className="animate-in">
-              <div className="h2" style={{ marginBottom: 20 }}>Infrastructure</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <InfrastructureStatus />
-                <ActivityLog entries={activityLog} />
-              </div>
-            </div>
-          )}
-
-          {/* TAB: Architecture */}
-          {activeSection === 'arch' && (
-            <div className="animate-in">
-              <div className="h2" style={{ marginBottom: 20 }}>System Architecture</div>
-              <ArchitectureOverview />
             </div>
           )}
 

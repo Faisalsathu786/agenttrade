@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, TrendingUp, Cpu, BarChart3, MessageSquare, Network, Layers } from 'lucide-react';
+import { Home, TrendingUp, History, Search } from 'lucide-react';
 
 interface SidebarProps {
   active: string;
@@ -8,13 +8,10 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'status',    icon: Activity,     label: 'Agent Status' },
-  { id: 'market',    icon: TrendingUp,   label: 'Live Market' },
-  { id: 'decisions', icon: BarChart3,    label: 'Decisions' },
-  { id: 'ai-model',  icon: Cpu,          label: 'AI Model' },
-  { id: 'assistant', icon: MessageSquare, label: 'Research' },
-  { id: 'infra',     icon: Network,      label: 'Infrastructure' },
-  { id: 'arch',      icon: Layers,       label: 'Architecture' },
+  { id: 'overview',  icon: Home,        label: 'Overview' },
+  { id: 'markets',   icon: TrendingUp,  label: 'Markets' },
+  { id: 'history',   icon: History,     label: 'History' },
+  { id: 'research',  icon: Search,      label: 'Research' },
 ];
 
 export default function Sidebar({ active, onNavigate }: SidebarProps) {
@@ -41,7 +38,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
       </nav>
 
       <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div className="status-dot live" />
           <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Agent Active</span>
         </div>
