@@ -113,8 +113,8 @@ export default function AIResearchAgent() {
         to: TREASURY_ADDRESS as `0x${string}`,
         value: parseEther(FEE_ETH),
         data: calldata,
-        gas: 300000n,
-        gasPrice: 1000000000n,
+        gas: BigInt(300000),
+        gasPrice: BigInt(1000000000),
       });
       // txHash comes from useSendTransaction hook → useEffect above will fire
     } catch (err: any) {
