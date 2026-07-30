@@ -107,6 +107,7 @@ export default function AIResearchAgent() {
     setPendingQuery(query);
     setIsPaying(true);
 
+    // Ritual Chain supports only legacy (type 0) tx, not EIP-1559
     try {
       await writeContractAsync({
         address: TREASURY_ADDRESS,
@@ -114,18 +115,16 @@ export default function AIResearchAgent() {
         functionName: 'payForQuery',
         args: [query],
         value: parseEther(FEE_ETH),
-        gas: BigInt(500000),
         gasPrice: BigInt(1000000000),
-        chainId: 1979,
       });
-      // txHash will be set by useWriteContract → useWaitForTransactionReceipt → isConfirmed
     } catch (err: any) {
       setIsPaying(false);
       setPendingQuery('');
-      const msg = err?.code === 4001 || err?.message?.includes('rejected')
+      const msg = err?.shortMessage || err?.message || String(err);
+      const friendly = msg?.includes('rejected') || msg?.includes('denied')
         ? 'Transaction cancelled.'
-        : `Transaction failed: ${err?.message?.slice(0, 80) || 'Unknown error'}`;
-      setMessages((prev) => [...prev, { role: 'system', content: msg, timestamp: Date.now() }]);
+        : `Tx failed: ${msg.slice(0, 120)}`;
+      setMessages((prev) => [...prev, { role: 'system', content: friendly, timestamp: Date.now() }]);
     }
   }, [input, isConnected, onRitual, hasEnoughBalance, isPaying, isTxPending, writeContractAsync]);
 
