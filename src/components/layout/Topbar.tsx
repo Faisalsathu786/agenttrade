@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Globe } from 'lucide-react';
+import { TrendingUp, Globe } from 'lucide-react';
 import { Lang, languages, setLangInStorage } from '@/lib/i18n';
 
 interface TopbarProps {
@@ -19,12 +19,8 @@ export default function Topbar({ lang, onLangChange, onMenuToggle }: TopbarProps
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <button className="btn btn-ghost btn-icon" onClick={onMenuToggle} style={{ display: 'none' }}>
-          <Menu size={18} />
-        </button>
-        <div className="chain-indicator">
-          <div className="status-dot live" style={{ width: 5, height: 5 }} />
-          Ritual Chain · 1979
+        <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--primary-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+          <TrendingUp size={15} />
         </div>
       </div>
 

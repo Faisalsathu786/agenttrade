@@ -41,12 +41,12 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
       </nav>
 
       <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)' }}>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-          Ritual Chain · ID 1979
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
           <div className="status-dot live" />
           <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Agent Active</span>
+        </div>
+        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>
+          Developed by Crypto Coach
         </div>
       </div>
     </aside>
