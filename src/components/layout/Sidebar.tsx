@@ -7,29 +7,14 @@ interface SidebarProps {
   onNavigate: (section: string) => void;
 }
 
-const NAV_GROUPS = [
-  {
-    label: 'Monitor',
-    items: [
-      { id: 'status',   icon: Activity,     label: 'Agent Status' },
-      { id: 'market',   icon: TrendingUp,    label: 'Live Market' },
-      { id: 'decisions',icon: BarChart3,     label: 'Decisions' },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { id: 'ai-model', icon: Cpu,           label: 'AI Model' },
-      { id: 'assistant',icon: MessageSquare,  label: 'Research' },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { id: 'infra',    icon: Network,       label: 'Infrastructure' },
-      { id: 'arch',     icon: Layers,        label: 'Architecture' },
-    ],
-  },
+const NAV_ITEMS = [
+  { id: 'status',    icon: Activity,     label: 'Agent Status' },
+  { id: 'market',    icon: TrendingUp,   label: 'Live Market' },
+  { id: 'decisions', icon: BarChart3,    label: 'Decisions' },
+  { id: 'ai-model',  icon: Cpu,          label: 'AI Model' },
+  { id: 'assistant', icon: MessageSquare, label: 'Research' },
+  { id: 'infra',     icon: Network,      label: 'Infrastructure' },
+  { id: 'arch',      icon: Layers,       label: 'Architecture' },
 ];
 
 export default function Sidebar({ active, onNavigate }: SidebarProps) {
@@ -43,20 +28,15 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
       </div>
 
       <nav className="sidebar-nav">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label}>
-            <div className="nav-section">{group.label}</div>
-            {group.items.map((item) => (
-              <button
-                key={item.id}
-                className={`nav-item ${active === item.id ? 'active' : ''}`}
-                onClick={() => onNavigate(item.id)}
-              >
-                <item.icon size={16} />
-                {item.label}
-              </button>
-            ))}
-          </div>
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item.id}
+            className={`nav-item ${active === item.id ? 'active' : ''}`}
+            onClick={() => onNavigate(item.id)}
+          >
+            <item.icon size={16} />
+            {item.label}
+          </button>
         ))}
       </nav>
 

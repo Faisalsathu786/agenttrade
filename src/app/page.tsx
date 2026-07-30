@@ -48,7 +48,7 @@ export default function DashboardPage() {
   const [lastDecisionTime, setLastDecisionTime] = useState(0);
   const [onChainState, setOnChainState] = useState<OnChainState>({ totalDecisions: 0, active: false, lastActivityBlock: null });
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([
-    { type: 'decision', asset: 'System', detail: 'AgentTrade deployed on Ritual Chain testnet', time: '30m ago' },
+    { type: 'decision', asset: 'System', detail: 'AgentTrade deployed on Ritual Chain testnet', time: 'now' },
   ]);
 
   const fetchPrices = useCallback(async () => {
@@ -81,13 +81,7 @@ export default function DashboardPage() {
           const d = decodeLatestDecision(decisionHex);
           if (d.timestamp !== lastDecisionTime) {
             setLastDecisionTime(d.timestamp);
-            const mapped: DecisionData = {
-              symbol: d.asset,
-              price: d.price,
-              direction: d.direction,
-              confidence: d.confidence,
-              timestamp: d.timestamp,
-            };
+            const mapped: DecisionData = { symbol: d.asset, price: d.price, direction: d.direction, confidence: d.confidence, timestamp: d.timestamp };
             setDecisions((prev) => {
               const exists = prev.some((p) => p.timestamp === mapped.timestamp);
               return exists ? prev : [mapped, ...prev.slice(0, 49)];
@@ -111,7 +105,7 @@ export default function DashboardPage() {
 
   const handleFetchPrice = useCallback((asset: string) => {
     setActivityLog((prev) => [
-      { type: 'price', asset, detail: 'Price refresh triggered', time: 'now' },
+      { type: 'price', asset, detail: 'Refresh triggered', time: 'now' },
       ...prev.slice(0, 19),
     ]);
     const cgId = COINGECKO_IDS[asset];
@@ -120,14 +114,7 @@ export default function DashboardPage() {
         .then((r) => r.json())
         .then((data) => {
           const coin = data[cgId];
-          if (coin) {
-            setPrices((prev) => ({ ...prev, [asset]: { price: coin.usd, change24h: coin.usd_24h_change ?? 0 } }));
-            const priceStr = `$${coin.usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            setActivityLog((prev) => [
-              { type: 'price', asset, detail: `Updated: ${priceStr}`, time: 'now' },
-              ...prev.slice(0, 19),
-            ]);
-          }
+          if (coin) setPrices((prev) => ({ ...prev, [asset]: { price: coin.usd, change24h: coin.usd_24h_change ?? 0 } }));
         }).catch(() => {});
     }
   }, []);
@@ -135,84 +122,107 @@ export default function DashboardPage() {
   return (
     <div className="app-shell">
       <Sidebar active={activeSection} onNavigate={setActiveSection} />
-
       <div className="main-content">
         <Topbar lang={lang} onLangChange={setLang} />
+        <div style={{ padding: 'var(--space-6)', maxWidth: 1100 }}>
 
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {/* Main Dashboard Grid */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="dashboard-grid animate-in">
-
-              {/* Agent Status — full width */}
-              <div className="col-12">
-                <AgentStatus
-                  totalDecisions={onChainState.totalDecisions}
-                  active={onChainState.active}
-                  lastActivityBlock={onChainState.lastActivityBlock}
-                />
+          {/* TAB: Agent Status */}
+          {activeSection === 'status' && (
+            <div className="animate-in">
+              <AgentStatus
+                totalDecisions={onChainState.totalDecisions}
+                active={onChainState.active}
+                lastActivityBlock={onChainState.lastActivityBlock}
+              />
+              <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <ArchitectureOverview />
+                <ActivityLog entries={activityLog} />
               </div>
+            </div>
+          )}
 
-              {/* Price Cards */}
-              {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
-                <div className="col-4" key={asset}>
+          {/* TAB: Live Market */}
+          {activeSection === 'market' && (
+            <div className="animate-in">
+              <div className="h2" style={{ marginBottom: 20 }}>Live Market</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
                   <PriceCard
+                    key={asset}
                     asset={asset}
                     data={prices[asset]}
                     loading={priceLoading}
                     onFetch={handleFetchPrice}
                     logoUrl=""
                   />
-                </div>
-              ))}
-
-              {/* Decisions Table */}
-              <div className="col-8">
-                <DecisionFeed
-                  decisions={decisions}
-                  loading={decisionLoading}
-                  error={decisionError}
-                />
+                ))}
               </div>
+              <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <AgentStatus
+                  totalDecisions={onChainState.totalDecisions}
+                  active={onChainState.active}
+                  lastActivityBlock={onChainState.lastActivityBlock}
+                />
+                <InfrastructureStatus />
+              </div>
+            </div>
+          )}
 
-              {/* Adaption AI */}
-              <div className="col-4">
+          {/* TAB: Decisions */}
+          {activeSection === 'decisions' && (
+            <div className="animate-in">
+              <div className="h2" style={{ marginBottom: 20 }}>On-Chain Decisions</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, alignItems: 'start' }}>
+                <DecisionFeed decisions={decisions} loading={decisionLoading} error={decisionError} />
+                <AgentDecisionsPanel />
+              </div>
+            </div>
+          )}
+
+          {/* TAB: AI Model */}
+          {activeSection === 'ai-model' && (
+            <div className="animate-in">
+              <div className="h2" style={{ marginBottom: 20 }}>Model & Performance</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <AdaptionAI />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <AdaptionAI />
+                  <AgentStatus
+                    totalDecisions={onChainState.totalDecisions}
+                    active={onChainState.active}
+                    lastActivityBlock={onChainState.lastActivityBlock}
+                  />
                   <InfrastructureStatus />
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* Architecture */}
-              <div className="col-8">
-                <ArchitectureOverview />
-              </div>
+          {/* TAB: Research */}
+          {activeSection === 'assistant' && (
+            <div className="animate-in">
+              <AIResearchAgent />
+            </div>
+          )}
 
-              {/* Activity */}
-              <div className="col-4">
+          {/* TAB: Infrastructure */}
+          {activeSection === 'infra' && (
+            <div className="animate-in">
+              <div className="h2" style={{ marginBottom: 20 }}>Infrastructure</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <InfrastructureStatus />
                 <ActivityLog entries={activityLog} />
               </div>
-
-              {/* AI Research Agent — full width */}
-              <div className="col-12">
-                <AIResearchAgent />
-              </div>
-
             </div>
-          </div>
+          )}
 
-          {/* Right Panel — Agent Decisions (sticky, auto-update) */}
-          <div style={{
-            width: 340,
-            minWidth: 340,
-            borderLeft: '1px solid var(--border-color)',
-            padding: '16px',
-            display: 'flex', flexDirection: 'column', gap: 12,
-            position: 'sticky', top: 56, height: 'calc(100vh - 56px)',
-            overflowY: 'auto',
-          }}>
-            <AgentDecisionsPanel />
-          </div>
+          {/* TAB: Architecture */}
+          {activeSection === 'arch' && (
+            <div className="animate-in">
+              <div className="h2" style={{ marginBottom: 20 }}>System Architecture</div>
+              <ArchitectureOverview />
+            </div>
+          )}
+
         </div>
       </div>
     </div>
