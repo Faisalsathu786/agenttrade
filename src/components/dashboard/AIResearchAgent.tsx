@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { useAccount, useBalance, useDisconnect, useWriteContract, useSimulateContract } from 'wagmi';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useAccount, useBalance, useDisconnect, useSendTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { formatEther, parseEther } from 'viem';
+import { formatEther, parseEther, encodeFunctionData } from 'viem';
 import { Send, Loader2, ExternalLink, Wallet, Coins, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 const TREASURY_ADDRESS = '0x9385556B571ab92bf6dC9a0DbD75429Dd4d56F91';
@@ -40,10 +40,11 @@ export default function AIResearchAgent() {
   const { address, isConnected, chain } = useAccount();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
+  const { sendTransactionAsync, isPending: isSendingTx, data: txHash } = useSendTransaction();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [step, setStep] = useState<'idle' | 'waiting-wallet' | 'researching' | 'done'>('idle');
+  const [waitingForTx, setWaitingForTx] = useState(false);
   const [pendingQuery, setPendingQuery] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -51,86 +52,88 @@ export default function AIResearchAgent() {
   const hasEnoughBalance = balance && Number(formatEther(balance.value)) >= Number(FEE_ETH);
   const onRitual = chain?.id === 1979;
 
-  // Contract write for fee payment
-  const { data: simulateData } = useSimulateContract({
-    address: TREASURY_ADDRESS as `0x${string}`,
-    abi: TREASURY_ABI,
-    functionName: 'payForQuery',
-    args: [pendingQuery || '_'],
-    value: parseEther(FEE_ETH),
-    query: { enabled: pendingQuery.length > 0 },
-  });
-
-  const { writeContractAsync, data: txHash, isPending: isSendingTx } = useWriteContract();
-
-  // When txHash appears, the transaction was submitted — now wait and fetch answer
+  // When txHash arrives, fetch the answer
   useEffect(() => {
-    if (txHash && pendingQuery) {
-      setStep('researching');
-      setMessages((prev) => [
-        ...prev,
-        { role: 'system', content: `Fee paid: ${FEE_ETH} ETH. Researching your question...`, timestamp: Date.now(), txHash },
-      ]);
-      const query = pendingQuery;
-      setPendingQuery('');
+    if (!txHash || !pendingQuery) return;
 
-      fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+    const query = pendingQuery;
+    setPendingQuery('');
+    setWaitingForTx(false);
+
+    setMessages((prev) => [
+      ...prev,
+      { role: 'system', content: `Fee paid: ${FEE_ETH} ETH. Researching...`, timestamp: Date.now(), txHash },
+    ]);
+
+    fetch('/api/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: data.answer, sources: data.sources || [], timestamp: Date.now() },
+        ]);
       })
-        .then((r) => r.json())
-        .then((data) => {
-          setMessages((prev) => [
-            ...prev,
-            { role: 'assistant', content: data.answer, sources: data.sources || [], timestamp: Date.now() },
-          ]);
-          setStep('done');
-        })
-        .catch(() => {
-          setMessages((prev) => [
-            ...prev,
-            { role: 'assistant', content: 'Unable to complete research. Your fee has been collected — please try again or contact support.', timestamp: Date.now() },
-          ]);
-          setStep('done');
-        });
-    }
+      .catch(() => {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'Unable to complete research. Please try again.', timestamp: Date.now() },
+        ]);
+      });
   }, [txHash, pendingQuery]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, step, isSendingTx]);
+  }, [messages, isSendingTx, waitingForTx]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     const query = input.trim();
-    if (!query || !isConnected || step === 'researching' || step === 'waiting-wallet' || isSendingTx) return;
+    if (!query || !isConnected || !onRitual || !hasEnoughBalance || isSendingTx || waitingForTx) return;
 
-    // Show user message
+    // 1. Show user message immediately
     setMessages((prev) => [...prev, { role: 'user', content: query, timestamp: Date.now() }]);
     setInput('');
 
-    // If already connected on Ritual with enough balance, trigger wallet tx
-    if (onRitual && hasEnoughBalance && simulateData?.request) {
-      setPendingQuery(query);
-      setStep('waiting-wallet');
-      try {
-        await writeContractAsync(simulateData.request);
-      } catch {
-        setPendingQuery('');
-        setStep('idle');
-        setMessages((prev) => [
-          ...prev,
-          { role: 'system', content: 'Transaction was cancelled or failed.', timestamp: Date.now() },
-        ]);
-      }
+    // 2. Encode contract call
+    const calldata = encodeFunctionData({
+      abi: TREASURY_ABI,
+      functionName: 'payForQuery',
+      args: [query],
+    });
+
+    setPendingQuery(query);
+    setWaitingForTx(true);
+
+    // 3. Open wallet for transaction confirmation
+    try {
+      await sendTransactionAsync({
+        to: TREASURY_ADDRESS as `0x${string}`,
+        value: parseEther(FEE_ETH),
+        data: calldata,
+      });
+      // txHash comes from useSendTransaction hook → useEffect above will fire
+    } catch (err: any) {
+      // User cancelled or tx failed
+      setWaitingForTx(false);
+      setPendingQuery('');
+      const msg = err?.code === 4001
+        ? 'Wallet confirmation was cancelled.'
+        : 'Transaction failed. Please try again.';
+      setMessages((prev) => [
+        ...prev,
+        { role: 'system', content: msg, timestamp: Date.now() },
+      ]);
     }
-  };
+  }, [input, isConnected, onRitual, hasEnoughBalance, isSendingTx, waitingForTx, sendTransactionAsync]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  const isLoading = step === 'researching' || step === 'waiting-wallet' || isSendingTx;
+  const isLoading = isSendingTx || waitingForTx;
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -161,7 +164,7 @@ export default function AIResearchAgent() {
         ) : null}
       </div>
 
-      {/* Wallet Gate */}
+      {/* Not connected */}
       {!isConnected ? (
         <div style={{ padding: '60px 40px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--primary-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -169,7 +172,7 @@ export default function AIResearchAgent() {
           </div>
           <div style={{ fontWeight: 600, fontSize: '1rem' }}>Connect Your Wallet</div>
           <div className="body" style={{ maxWidth: 320, textAlign: 'center' }}>
-            Connect your wallet on Ritual Chain to ask AI research questions. Each question costs {FEE_ETH} ETH — fee is collected on-chain in the ResearchTreasury.
+            Connect your wallet on Ritual Chain to ask AI research questions. Each question costs {FEE_ETH} ETH — fee is collected on-chain.
           </div>
           <ConnectButton.Custom>
             {({ openConnectModal }) => (
@@ -184,14 +187,14 @@ export default function AIResearchAgent() {
         <div style={{ padding: '40px 32px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
           <AlertCircle size={20} style={{ color: 'var(--warning)' }} />
           <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Switch to Ritual Chain</div>
-          <div className="body">Switch your wallet to Ritual Chain (ID: 1979) to continue.</div>
+          <div className="body">Switch your wallet to Ritual Chain (ID: 1979).</div>
         </div>
       ) : !hasEnoughBalance ? (
         <div style={{ padding: '40px 32px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
           <AlertCircle size={20} style={{ color: 'var(--warning)' }} />
           <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Insufficient Balance</div>
           <div className="body">
-            You need at least {FEE_ETH} ETH on Ritual Chain. Current balance: {Number(balanceFormatted).toFixed(4)} ETH
+            Need at least {FEE_ETH} ETH on Ritual Chain. Balance: {Number(balanceFormatted).toFixed(4)} ETH
           </div>
         </div>
       ) : (
@@ -199,25 +202,28 @@ export default function AIResearchAgent() {
           {/* Fee banner */}
           <div style={{ padding: '6px var(--space-5)', background: 'var(--primary-dim)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--primary)', borderBottom: '1px solid var(--border-color)' }}>
             <Coins size={12} />
-            <span>Each question costs <strong>{FEE_ETH} ETH</strong> — confirmed on-chain in treasury</span>
+            <span>Each question costs <strong>{FEE_ETH} ETH</strong> — confirmed on-chain</span>
           </div>
 
           {/* Messages */}
           <div style={{ maxHeight: 400, overflowY: 'auto', padding: 'var(--space-4) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {messages.length === 0 ? (
               <div className="caption" style={{ textAlign: 'center', padding: '20px 0' }}>
-                Type a question and click send. Your wallet will ask you to confirm the {FEE_ETH} ETH fee, then you will receive a detailed research answer.
+                Type a question and click send. Your wallet will open — confirm the {FEE_ETH} ETH fee to get your answer.
               </div>
             ) : (
               messages.map((msg, i) => (
                 <div key={i} className={`chat-bubble ${msg.role}`}>
                   <div className="chat-avatar">{msg.role === 'user' ? 'U' : msg.role === 'system' ? '⚡' : 'AI'}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className={`chat-text ${msg.role === 'assistant' ? 'system' : msg.role === 'system' ? '' : ''}`}
+                    <div
+                      className={`chat-text ${msg.role === 'assistant' ? 'system' : ''}`}
                       style={msg.role === 'assistant' ? { background: 'var(--surface)', border: '1px solid var(--border-color)', whiteSpace: 'pre-wrap' } : msg.role === 'system' ? { background: 'var(--primary-dim)', border: '1px solid rgba(124,58,237,0.2)', textAlign: 'center' } : {}}
-                      dangerouslySetInnerHTML={msg.role === 'assistant' ? { __html: msg.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') } : undefined}
                     >
-                      {msg.role !== 'assistant' ? msg.content : undefined}
+                      {msg.role === 'assistant'
+                        ? <span dangerouslySetInnerHTML={{ __html: msg.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
+                        : msg.content
+                      }
                     </div>
                     {msg.sources && msg.sources.length > 0 && (
                       <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -232,7 +238,7 @@ export default function AIResearchAgent() {
                       <div className="caption" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <CheckCircle2 size={10} style={{ color: 'var(--success)' }} />
                         <a href={`https://explorer.ritualfoundation.org/tx/${msg.txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--success)' }}>
-                          View transaction
+                          View on Explorer
                         </a>
                       </div>
                     )}
@@ -240,7 +246,7 @@ export default function AIResearchAgent() {
                 </div>
               ))
             )}
-            {(isLoading || isSendingTx) && (
+            {isLoading && (
               <div className="chat-bubble assistant">
                 <div className="chat-avatar">AI</div>
                 <div className="typing-indicator"><span /><span /><span /></div>
@@ -267,19 +273,14 @@ export default function AIResearchAgent() {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask any question..."
                 className="chat-input"
-                disabled={isLoading || isSendingTx}
+                disabled={isLoading}
               />
-              <button
-                onClick={handleSend}
-                disabled={isLoading || isSendingTx || !input.trim()}
-                className="chat-send-btn"
-                style={{ background: isLoading ? 'var(--text-muted)' : 'var(--primary)' }}
-              >
-                {isSendingTx || step === 'waiting-wallet' ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+              <button onClick={handleSend} disabled={isLoading || !input.trim()} className="chat-send-btn">
+                {isLoading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
               </button>
             </div>
             <div className="caption" style={{ textAlign: 'center', marginTop: 6, fontSize: '0.65rem' }}>
-              Sending will open your wallet to pay {FEE_ETH} ETH fee
+              Wallet will open to confirm {FEE_ETH} ETH fee
             </div>
           </div>
         </div>
