@@ -6,7 +6,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { formatEther, parseEther } from 'viem';
 import { Send, Loader2, ExternalLink, Wallet, Coins, AlertCircle, CheckCircle2 } from 'lucide-react';
 
-const TREASURY_ADDRESS = '0x9385556B571ab92bf6dC9a0DbD75429Dd4d56F91';
+const TREASURY_ADDRESS = '0xcD0048A5628B37B8f743cC2FeA18817A29e97270';
 
 const TREASURY_ABI = [
   {

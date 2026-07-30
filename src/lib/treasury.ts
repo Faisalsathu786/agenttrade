@@ -1,7 +1,7 @@
 // ─── ResearchTreasury — Contract Interaction ──────────
 import { Address, encodeFunctionData, decodeFunctionResult, createPublicClient, http } from 'viem';
 
-export const TREASURY_ADDRESS = '0x9385556B571ab92bf6dC9a0DbD75429Dd4d56F91'; // UUPS Proxy, Ritual Chain 1979
+export const TREASURY_ADDRESS = '0xcD0048A5628B37B8f743cC2FeA18817A29e97270'; // UUPS Proxy, Ritual Chain 1979 — Admin: 0x6c9d
 
 export const TREASURY_ABI = [
   {

@@ -9,7 +9,7 @@ import {
   History, Users,
 } from 'lucide-react';
 
-const TREASURY_ADDR = '0x9385556B571ab92bf6dC9a0DbD75429Dd4d56F91'; // ResearchTreasury Proxy, Ritual Chain 1979
+const TREASURY_ADDR = '0xcD0048A5628B37B8f743cC2FeA18817A29e97270'; // ResearchTreasury Proxy, Ritual Chain 1979
 
 export default function AdminPage() {
   const { address, isConnected } = useAccount();
