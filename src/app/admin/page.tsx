@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useConnect, useWalletClient, useDisconnect } from 'wagmi';
+import { useAccount, useWalletClient, useDisconnect } from 'wagmi';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import {
   Wallet, Shield, Coins, ArrowUpRight, Settings,
   AlertTriangle, CheckCircle2, DollarSign,
@@ -12,7 +13,6 @@ const TREASURY_ADDR = '0x9385556B571ab92bf6dC9a0DbD75429Dd4d56F91'; // ResearchT
 
 export default function AdminPage() {
   const { address, isConnected } = useAccount();
-  const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
 
@@ -59,9 +59,13 @@ export default function AdminPage() {
               <Shield size={48} style={{ color: 'var(--text-muted)' }} />
               <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>Admin Panel</div>
               <div className="body">Connect admin wallet to access</div>
-              <button onClick={() => connect({ connector: connectors[0] })} className="btn btn-primary">
-                <Wallet size={16} /> Connect Admin Wallet
-              </button>
+              <ConnectButton.Custom>
+                {({ openConnectModal }) => (
+                  <button onClick={openConnectModal} className="btn btn-primary">
+                    <Wallet size={16} /> Connect Admin Wallet
+                  </button>
+                )}
+              </ConnectButton.Custom>
             </div>
           </div>
         </div>

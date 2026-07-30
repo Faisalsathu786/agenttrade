@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useAccount, useConnect, useBalance, useDisconnect } from 'wagmi';
+import { useAccount, useBalance, useDisconnect } from 'wagmi';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { formatEther } from 'viem';
 import { Send, Loader2, ExternalLink, Wallet, Coins, AlertCircle } from 'lucide-react';
 
@@ -24,7 +25,6 @@ const AGENT_FEE = '0.001';
 
 export default function AIResearchAgent() {
   const { address, isConnected, chain } = useAccount();
-  const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
 
@@ -95,23 +95,19 @@ export default function AIResearchAgent() {
           <div>
             <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>AI Research Agent</div>
             <div className="caption">
-              {isConnected ? `Connected · ${address?.slice(0,6)}...${address?.slice(-4)}` : 'Wallet required'}
+              {isConnected ? `Connected · ${address?.slice(0, 6)}...${address?.slice(-4)}` : 'Wallet required'}
             </div>
           </div>
         </div>
 
-        {!isConnected ? (
-          <button onClick={() => connect({ connector: connectors[0] })} className="btn btn-primary btn-sm" style={{ gap: 6 }}>
-            <Wallet size={14} /> Connect Wallet
-          </button>
-        ) : (
+        {isConnected ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className={`badge ${onRitual ? 'badge-success' : 'badge-warning'}`}>
               {onRitual ? 'Ritual Chain' : chain?.name || 'Unknown'}
             </span>
             <button onClick={() => disconnect()} className="btn btn-ghost btn-sm">Disconnect</button>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Wallet Gate */}
@@ -131,9 +127,13 @@ export default function AIResearchAgent() {
           <div className="body" style={{ maxWidth: 320, textAlign: 'center' }}>
             Connect your wallet on Ritual Chain to ask questions. Each query costs {AGENT_FEE} ETH.
           </div>
-          <button onClick={() => connect({ connector: connectors[0] })} className="btn btn-primary">
-            <Wallet size={16} /> Connect Wallet
-          </button>
+          <ConnectButton.Custom>
+            {({ openConnectModal }) => (
+              <button onClick={openConnectModal} className="btn btn-primary">
+                <Wallet size={16} /> Connect Wallet
+              </button>
+            )}
+          </ConnectButton.Custom>
           <div className="caption">Make sure Ritual Chain (ID: 1979) is added to your wallet</div>
         </div>
       ) : !onRitual ? (
@@ -185,7 +185,7 @@ export default function AIResearchAgent() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className={`chat-text ${msg.role === 'assistant' ? 'system' : ''}`}
                       style={msg.role === 'assistant' ? { background: 'var(--surface)', border: '1px solid var(--border-color)', whiteSpace: 'pre-wrap' } : {}}
-                      dangerouslySetInnerHTML={msg.role === 'assistant' ? { __html: msg.content.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br/>') } : undefined}
+                      dangerouslySetInnerHTML={msg.role === 'assistant' ? { __html: msg.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') } : undefined}
                     />
                     {msg.sources && msg.sources.length > 0 && (
                       <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
