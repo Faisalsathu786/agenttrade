@@ -107,12 +107,14 @@ export default function AIResearchAgent() {
     setPendingQuery(query);
     setWaitingForTx(true);
 
-    // 3. Open wallet for transaction confirmation
+    // 3. Open wallet for transaction confirmation (manual gas for Ritual Chain)
     try {
       await sendTransactionAsync({
         to: TREASURY_ADDRESS as `0x${string}`,
         value: parseEther(FEE_ETH),
         data: calldata,
+        gas: 300000n,
+        gasPrice: 1000000000n,
       });
       // txHash comes from useSendTransaction hook → useEffect above will fire
     } catch (err: any) {
