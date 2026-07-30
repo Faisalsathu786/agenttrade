@@ -1,8 +1,9 @@
 'use client';
 
 import { WagmiProvider, createConfig, http } from 'wagmi';
-import { injected } from 'wagmi/connectors';
+import { RainbowKitProvider, getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import '@rainbow-me/rainbowkit/styles.css';
 
 const ritualChain = {
   id: 1979,
@@ -17,12 +18,13 @@ const ritualChain = {
   },
 } as const;
 
-export const wagmiConfig = createConfig({
+export const wagmiConfig = getDefaultConfig({
+  appName: 'AgentTrade',
+  projectId: 'e65e0e8ee0b354919610b744401ec152',
   chains: [ritualChain],
   transports: {
     [ritualChain.id]: http('https://rpc.ritualfoundation.org'),
   },
-  connectors: [injected()],
   ssr: true,
 });
 
@@ -32,7 +34,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        {children}
+        <RainbowKitProvider
+          coolMode
+          modalSize="compact"
+          appInfo={{
+            appName: 'AgentTrade',
+            learnMoreUrl: 'https://github.com/Faisalsathu786/agenttrade',
+          }}
+        >
+          {children}
+        </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

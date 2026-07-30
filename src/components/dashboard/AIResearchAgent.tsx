@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useAccount, useConnect, useBalance, useDisconnect } from 'wagmi';
+import { formatEther } from 'viem';
 import { Send, Loader2, ExternalLink, Wallet, Coins, AlertCircle } from 'lucide-react';
 
 interface Message {
@@ -32,7 +33,8 @@ export default function AIResearchAgent() {
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const hasEnoughBalance = balance && Number(balance.formatted) >= Number(AGENT_FEE);
+  const balanceFormatted = balance ? formatEther(balance.value) : '0';
+  const hasEnoughBalance = balance && Number(formatEther(balance.value)) >= Number(AGENT_FEE);
   const onRitual = chain?.id === 1979;
 
   useEffect(() => {
@@ -151,7 +153,7 @@ export default function AIResearchAgent() {
           <AlertCircle size={20} style={{ color: 'var(--warning)' }} />
           <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Insufficient Balance</div>
           <div className="body">
-            Need at least {AGENT_FEE} ETH on Ritual Chain. Balance: {balance ? Number(balance.formatted).toFixed(4) : '0'} ETH
+            Need at least {AGENT_FEE} ETH on Ritual Chain. Balance: {Number(balanceFormatted).toFixed(4)} ETH
           </div>
         </div>
       ) : (
