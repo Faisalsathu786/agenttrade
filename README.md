@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgentTrade
+
+Autonomous trading agent built on Ritual Chain — on-chain decision engine, AI-powered market analysis, and real-time dashboard.
+
+## Architecture
+
+```
+Smart Contract (Ritual Chain)  →  AgentTrader.sol stores every decision on-chain
+Auto-Agent (Cron Engine)       →  Fetches prices, computes indicators, records BULLISH/BEARISH/HOLD
+AI Model (Adaption)            →  Trained on 3,767 rows of hourly BTC/ETH/SOL data
+Dashboard (Next.js)            →  Real-time market data, on-chain decisions, research assistant
+```
+
+## Stack
+
+- **Frontend**: Next.js 16, React 19, TypeScript, CSS Modules
+- **Styling**: Tailwind CSS 3, Inter + JetBrains Mono fonts
+- **Icons**: Lucide React
+- **Smart Contract**: Solidity 0.8.28, Foundry, Ritual Chain testnet (ID 1979)
+- **AI**: Adaption AutoScientist, DuckDuckGo research API
+- **Data**: CoinGecko API, on-chain RPC queries
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Smart Contracts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd contracts
+forge build
+forge script script/Deploy.s.sol:DeployAgentTrader --rpc-url $RITUAL_RPC --broadcast
+```
 
-## Learn More
+**Deployed**: `0x8bD4A8Aba8C77650c62730De88268cE80597E2cB` on Ritual Chain (1979)
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/                  # Next.js app router
+│   ├── api/research/     # AI research endpoint
+│   ├── globals.css       # Design system
+│   ├── layout.tsx        # Root layout + fonts
+│   └── page.tsx          # Dashboard page
+├── components/
+│   ├── dashboard/        # 7 dashboard components
+│   └── layout/           # Sidebar + Topbar
+└── lib/                  # Contracts, RPC helpers, i18n
+contracts/
+├── src/AgentTrader.sol   # On-chain decision engine
+├── script/Deploy.s.sol   # Deployment script
+└── foundry.toml
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## License
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

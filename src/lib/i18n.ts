@@ -17,7 +17,6 @@ type TranslationMap = Record<Lang, Record<string, string>>;
 
 const translations: TranslationMap = {
   en: {
-    // Header
     'app.name': 'AgentTrade',
     'app.tagline': 'Autonomous Trading Agent',
     'chain.status': 'Live on Ritual Chain',
