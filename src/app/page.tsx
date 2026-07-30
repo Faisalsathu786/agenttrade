@@ -12,7 +12,8 @@ import PriceCard from '@/components/dashboard/PriceCard';
 import DecisionFeed from '@/components/dashboard/DecisionFeed';
 import ActivityLog from '@/components/dashboard/ActivityLog';
 import AdaptionAI from '@/components/dashboard/AdaptionAI';
-import AIAssistant from '@/components/dashboard/AIAssistant';
+import AIResearchAgent from '@/components/dashboard/AIResearchAgent';
+import AgentDecisionsPanel from '@/components/dashboard/AgentDecisions';
 import InfrastructureStatus from '@/components/dashboard/InfrastructureStatus';
 import ArchitectureOverview from '@/components/dashboard/ArchitectureOverview';
 
@@ -110,7 +111,7 @@ export default function DashboardPage() {
 
   const handleFetchPrice = useCallback((asset: string) => {
     setActivityLog((prev) => [
-      { type: 'price', asset, detail: `Price refresh triggered`, time: 'now' },
+      { type: 'price', asset, detail: 'Price refresh triggered', time: 'now' },
       ...prev.slice(0, 19),
     ]);
     const cgId = COINGECKO_IDS[asset];
@@ -138,62 +139,80 @@ export default function DashboardPage() {
       <div className="main-content">
         <Topbar lang={lang} onLangChange={setLang} />
 
-        <div className="dashboard-grid animate-in">
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          {/* Main Dashboard Grid */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="dashboard-grid animate-in">
 
-          {/* Agent Status — full width */}
-          <div className="col-12">
-            <AgentStatus
-              totalDecisions={onChainState.totalDecisions}
-              active={onChainState.active}
-              lastActivityBlock={onChainState.lastActivityBlock}
-            />
-          </div>
+              {/* Agent Status — full width */}
+              <div className="col-12">
+                <AgentStatus
+                  totalDecisions={onChainState.totalDecisions}
+                  active={onChainState.active}
+                  lastActivityBlock={onChainState.lastActivityBlock}
+                />
+              </div>
 
-          {/* Price Cards */}
-          {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
-            <div className="col-4" key={asset}>
-              <PriceCard
-                asset={asset}
-                data={prices[asset]}
-                loading={priceLoading}
-                onFetch={handleFetchPrice}
-                logoUrl=""
-              />
+              {/* Price Cards */}
+              {(['BTC', 'ETH', 'SOL'] as const).map((asset) => (
+                <div className="col-4" key={asset}>
+                  <PriceCard
+                    asset={asset}
+                    data={prices[asset]}
+                    loading={priceLoading}
+                    onFetch={handleFetchPrice}
+                    logoUrl=""
+                  />
+                </div>
+              ))}
+
+              {/* Decisions Table */}
+              <div className="col-8">
+                <DecisionFeed
+                  decisions={decisions}
+                  loading={decisionLoading}
+                  error={decisionError}
+                />
+              </div>
+
+              {/* Adaption AI */}
+              <div className="col-4">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <AdaptionAI />
+                  <InfrastructureStatus />
+                </div>
+              </div>
+
+              {/* Architecture */}
+              <div className="col-8">
+                <ArchitectureOverview />
+              </div>
+
+              {/* Activity */}
+              <div className="col-4">
+                <ActivityLog entries={activityLog} />
+              </div>
+
+              {/* AI Research Agent — full width */}
+              <div className="col-12">
+                <AIResearchAgent />
+              </div>
+
             </div>
-          ))}
-
-          {/* Decisions Table */}
-          <div className="col-8">
-            <DecisionFeed
-              decisions={decisions}
-              loading={decisionLoading}
-              error={decisionError}
-            />
           </div>
 
-          {/* Adaption AI */}
-          <div className="col-4">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <AdaptionAI />
-              <InfrastructureStatus />
-            </div>
+          {/* Right Panel — Agent Decisions (sticky, auto-update) */}
+          <div style={{
+            width: 340,
+            minWidth: 340,
+            borderLeft: '1px solid var(--border-color)',
+            padding: '16px',
+            display: 'flex', flexDirection: 'column', gap: 12,
+            position: 'sticky', top: 56, height: 'calc(100vh - 56px)',
+            overflowY: 'auto',
+          }}>
+            <AgentDecisionsPanel />
           </div>
-
-          {/* Architecture */}
-          <div className="col-8">
-            <ArchitectureOverview />
-          </div>
-
-          {/* Activity */}
-          <div className="col-4">
-            <ActivityLog entries={activityLog} />
-          </div>
-
-          {/* AI Assistant — full width */}
-          <div className="col-12">
-            <AIAssistant />
-          </div>
-
         </div>
       </div>
     </div>

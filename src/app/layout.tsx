@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import AppProviders from './providers';
 
 export const metadata: Metadata = {
   title: 'AgentTrade — Autonomous Trading Agent on Ritual Chain',
@@ -30,7 +31,9 @@ export default function RootLayout({
         />
       </head>
       <body style={{ background: 'var(--bg-deep)', color: 'var(--text-primary)' }}>
-        {children}
+        <AppProviders>
+          {children}
+        </AppProviders>
       </body>
     </html>
   );
