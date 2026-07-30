@@ -8,7 +8,7 @@ import {
   History, Users,
 } from 'lucide-react';
 
-const TREASURY_ADDR = '0x0000000000000000000000000000000000000000'; // Replace after deploy
+const TREASURY_ADDR = '0x9385556B571ab92bf6dC9a0DbD75429Dd4d56F91'; // ResearchTreasury Proxy, Ritual Chain 1979
 
 export default function AdminPage() {
   const { address, isConnected } = useAccount();
