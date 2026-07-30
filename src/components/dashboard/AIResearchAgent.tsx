@@ -107,7 +107,7 @@ export default function AIResearchAgent() {
     setPendingQuery(query);
     setIsPaying(true);
 
-    // Ritual Chain supports only legacy (type 0) tx, not EIP-1559
+    // Ritual Chain requires EIP-1559 (type-2) — NO legacy gasPrice, let wagmi default to EIP-1559
     try {
       await writeContractAsync({
         address: TREASURY_ADDRESS,
@@ -115,7 +115,6 @@ export default function AIResearchAgent() {
         functionName: 'payForQuery',
         args: [query],
         value: parseEther(FEE_ETH),
-        gasPrice: BigInt(1000000000),
       });
     } catch (err: any) {
       setIsPaying(false);
